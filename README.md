@@ -31,11 +31,12 @@ Antes de ejecutar el proyecto, asegúrate de tener instalado:
 ## 📦 Instalación y Configuración
 
 ### 1. Clonar el repositorio
-```bash
+
 git clone [https://github.com/tu-usuario/cafeteria-origen-pos.git](https://github.com/tu-usuario/cafeteria-origen-pos.git)
 cd cafeteria-origen-pos
 
 ### 2. Instalar dependencias del Backend
+
 Dentro de la carpeta Backend terminal escribir el siguiente comando:
 - npm install
 
