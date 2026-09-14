@@ -24,6 +24,7 @@ function App() {
 
   const [mostrarPagoEfectivo, setMostrarPagoEfectivo] = useState(false);
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
+  const [mostrarConfirmarSalida, setMostrarConfirmarSalida] = useState(false);
 
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
 
@@ -795,34 +796,14 @@ function App() {
 
 
             <button
-              type="button"
-              className="logout-btn"
-              onClick={() => {
-
-                setUsuario(null);
-
-                setCarrito([]);
-
-                setMenuGerenciaAbierto(
-                  false
-                );
-
-                setMostrarPagoEfectivo(
-                  false
-                );
-
-                setMostrarConfirmacion(
-                  false
-                );
-
-                setEfectivoRecibido('');
-
-              }}
-            >
-
-              Cerrar sesión
-
-            </button>
+  type="button"
+  className="logout-btn"
+  onClick={() => {
+    setMostrarConfirmarSalida(true);
+  }}
+>
+  Cerrar sesión
+</button>
 
 
           </div>
@@ -1498,6 +1479,7 @@ function App() {
             </div>
 
 
+
             <div className="confirm-details">
 
 
@@ -1621,6 +1603,108 @@ function App() {
         </div>
 
       )}
+
+      {/* ==================================================
+    MODAL CONFIRMAR CIERRE DE SESIÓN
+================================================== */}
+
+{mostrarConfirmarSalida && (
+
+  <div className="modal-overlay">
+
+    <div className="confirm-modal">
+
+      <div className="modal-header">
+
+        <div>
+
+          <h3>
+            Cerrar sesión
+          </h3>
+
+          <p>
+            ¿Estás seguro de que deseas cerrar sesión?
+          </p>
+
+        </div>
+
+        <button
+          type="button"
+          className="modal-close"
+          onClick={() =>
+            setMostrarConfirmarSalida(false)
+          }
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <div className="confirm-details">
+
+        <div className="confirm-row">
+
+          <span>
+            Usuario actual
+          </span>
+
+          <strong>
+            {usuario.username}
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <div className="modal-actions">
+
+        <button
+          type="button"
+          className="modal-secondary"
+          onClick={() =>
+            setMostrarConfirmarSalida(false)
+          }
+        >
+          Cancelar
+        </button>
+
+
+        <button
+          type="button"
+          className="modal-primary"
+          onClick={() => {
+
+            setMostrarConfirmarSalida(false);
+
+            setUsuario(null);
+
+            setCarrito([]);
+
+            setMenuGerenciaAbierto(false);
+
+            setMostrarPagoEfectivo(false);
+
+            setMostrarConfirmacion(false);
+
+            setEfectivoRecibido('');
+
+            setUsername('');
+            setPassword('');
+
+          }}
+        >
+          Sí, cerrar sesión
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+)}
 
 
     </>
