@@ -12,20 +12,74 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 
 // Endpoint de autenticación (Login)
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        const query = `SELECT id_usuario, username FROM public.usuarios WHERE username = $1 AND password = $2`;
-        const result = await pool.query(query, [username, password]);
 
-        if (result.rows.length > 0) {
-            res.json({ success: true, user: result.rows[0] });
-        } else {
-            res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
-        }
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error en el servidor al intentar iniciar sesión' });
+  const { username, password } = req.body;
+
+  try {
+
+    const result = await pool.query(
+      `
+      SELECT
+        u.id_usuario,
+        u.username,
+        e.id_empleado,
+        e.nombre AS nombre_empleado,
+        e.estado,
+        r.id_rol,
+        r.nombre AS rol
+      FROM usuarios u
+
+      LEFT JOIN empleado e
+        ON e.id_empleado = u.id_empleado
+
+      LEFT JOIN rol r
+        ON r.id_rol = e.id_rol
+
+      WHERE
+        u.username = $1
+        AND u.password = $2
+      `,
+      [
+        username,
+        password
+      ]
+    );
+
+    if (result.rows.length === 0) {
+
+      return res.status(401).json({
+        success: false,
+        message: 'Usuario o contraseña incorrectos'
+      });
+
     }
+
+    const usuario = result.rows[0];
+
+    return res.json({
+      success: true,
+
+      user: {
+        id_usuario: usuario.id_usuario,
+        username: usuario.username,
+        id_empleado: usuario.id_empleado,
+        nombre: usuario.nombre_empleado,
+        id_rol: usuario.id_rol,
+        rol: usuario.rol
+      }
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor'
+    });
+
+  }
+
 });
 
 // Obtener categorías y productos desde la BD
@@ -63,7 +117,7 @@ app.get('/api/menu', async (req, res) => {
 
 // Registrar venta en PostgreSQL
 app.post('/api/ventas', async (req, res) => {
-    const { total, metodo_pago, detalles } = req.body;
+    const { total, metodo_pago, efectivo_recibido, cambio_entregado, detalles } = req.body;
     const client = await pool.connect();
 
     try {
