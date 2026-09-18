@@ -42,6 +42,12 @@ function App() {
 
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
 
+  const [mostrarVentaExitosa, setMostrarVentaExitosa] =
+  useState(false);
+
+  const [ultimaVenta, setUltimaVenta] =
+  useState(null);
+
   
 
 
@@ -727,9 +733,20 @@ const productosInventario = (() => {
       }
 
 
-      alert(
-        'Venta registrada con éxito'
-      );
+      setUltimaVenta({
+  total: total,
+  metodo_pago: metodoPago,
+  efectivo_recibido:
+    metodoPago === 'Efectivo'
+      ? efectivoNumero
+      : null,
+  cambio:
+    metodoPago === 'Efectivo'
+      ? cambio
+      : null
+});
+
+setMostrarVentaExitosa(true);
 
 
       setCarrito([]);
@@ -2235,6 +2252,93 @@ const productosInventario = (() => {
         </div>
 
       )}
+
+      {/* ==================================================
+          MODAL MOSTRAR CONFIRMACION DE VENTA EXITOSA
+      ================================================== */}
+
+      {mostrarVentaExitosa && ultimaVenta && (
+
+  <div className="modal-overlay">
+
+    <div className="success-modal">
+
+      <div className="success-icon">
+        ✓
+      </div>
+
+      <h3>
+        Venta completada
+      </h3>
+
+      <p className="success-message">
+        La venta se registró correctamente
+      </p>
+
+
+      <div className="success-details">
+
+        <div className="confirm-row">
+          <span>Total</span>
+
+          <strong>
+            {money(ultimaVenta.total)}
+          </strong>
+        </div>
+
+
+        <div className="confirm-row">
+          <span>Método de pago</span>
+
+          <strong>
+            {ultimaVenta.metodo_pago}
+          </strong>
+        </div>
+
+
+        {ultimaVenta.metodo_pago === 'Efectivo' && (
+          <>
+            <div className="confirm-row">
+              <span>Efectivo recibido</span>
+
+              <strong>
+                {money(
+                  ultimaVenta.efectivo_recibido
+                )}
+              </strong>
+            </div>
+
+            <div className="confirm-row success-change">
+              <span>Cambio</span>
+
+              <strong>
+                {money(ultimaVenta.cambio)}
+              </strong>
+            </div>
+          </>
+        )}
+
+      </div>
+
+
+      <button
+        type="button"
+        className="success-button"
+        onClick={() => {
+
+          setMostrarVentaExitosa(false);
+          setUltimaVenta(null);
+
+        }}
+      >
+        Finalizar
+      </button>
+
+    </div>
+
+  </div>
+
+)}
 
       {/* ==================================================
     MODAL CONFIRMAR CIERRE DE SESIÓN
