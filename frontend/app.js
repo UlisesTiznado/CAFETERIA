@@ -6,7 +6,16 @@ function App() {
      ESTADOS
   ================================================== */
 
-  const [usuario, setUsuario] = useState(null);
+  const [usuario, setUsuario] = useState(() => {
+
+  const usuarioGuardado =
+    localStorage.getItem('usuario');
+
+  return usuarioGuardado
+    ? JSON.parse(usuarioGuardado)
+    : null;
+
+});
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -16,17 +25,24 @@ function App() {
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [busqueda, setBusqueda] = useState('');
 
+  const [filtroInventario, setFiltroInventario] = useState('todos');
+  const [ordenInventario, setOrdenInventario] = useState('predeterminado');
+  const [valorFiltroInventario, setValorFiltroInventario] = useState('todos');
+
   const [carrito, setCarrito] = useState([]);
 
   const [metodoPago, setMetodoPago] = useState('Efectivo');
 
   const [menuGerenciaAbierto, setMenuGerenciaAbierto] = useState(false);
+  const [vistaActual, setVistaActual] = useState('pos');
 
   const [mostrarPagoEfectivo, setMostrarPagoEfectivo] = useState(false);
   const [mostrarConfirmacion, setMostrarConfirmacion] = useState(false);
   const [mostrarConfirmarSalida, setMostrarConfirmarSalida] = useState(false);
 
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
+
+  
 
 
   /* ==================================================
@@ -135,6 +151,11 @@ function App() {
 
       setUsuario(data.user);
 
+localStorage.setItem(
+  'usuario',
+  JSON.stringify(data.user)
+);
+
 
     } catch (err) {
 
@@ -158,90 +179,109 @@ function App() {
 
   const agregarAlCarrito = (producto) => {
 
-    setCarrito(prev => {
+  const stockDisponible = Number(producto.stock || 0);
 
-      const existe = prev.find(
-        item =>
-          item.id_producto ===
-          producto.id_producto
-      );
+  // No permitir productos agotados
+  if (stockDisponible <= 0) {
+    return;
+  }
 
+  setCarrito(prev => {
 
-      if (existe) {
+    const existe = prev.find(
+      item =>
+        item.id_producto ===
+        producto.id_producto
+    );
 
-        return prev.map(item =>
+    if (existe) {
 
-          item.id_producto ===
-          producto.id_producto
-
-            ? {
-                ...item,
-                cantidad:
-                  item.cantidad + 1
-              }
-
-            : item
-
-        );
-
+      // No permitir superar el stock disponible
+      if (existe.cantidad >= stockDisponible) {
+        return prev;
       }
 
+      return prev.map(item =>
 
-      return [
-        ...prev,
-        {
-          ...producto,
-          cantidad: 1
-        }
-      ];
+        item.id_producto === producto.id_producto
 
-    });
+          ? {
+              ...item,
+              cantidad: item.cantidad + 1
+            }
 
-  };
+          : item
+
+      );
+
+    }
+
+    return [
+      ...prev,
+      {
+        ...producto,
+        cantidad: 1
+      }
+    ];
+
+  });
+
+};
+
 
 
   const cambiarCantidad = (
-    id_producto,
-    delta
-  ) => {
+  id_producto,
+  delta
+) => {
 
-    setCarrito(prev =>
+  setCarrito(prev =>
 
-      prev
+    prev
 
-        .map(item => {
+      .map(item => {
 
+        if (
+          item.id_producto === id_producto
+        ) {
+
+          const nuevaCantidad =
+            item.cantidad + delta;
+
+          const stockDisponible =
+            Number(item.stock || 0);
+
+
+          // Si intenta superar el stock,
+          // mantener la cantidad actual
           if (
-            item.id_producto ===
-            id_producto
+            delta > 0 &&
+            nuevaCantidad > stockDisponible
           ) {
-
-            const nuevaCantidad =
-              item.cantidad + delta;
-
-
-            return nuevaCantidad > 0
-
-              ? {
-                  ...item,
-                  cantidad:
-                    nuevaCantidad
-                }
-
-              : null;
-
+            return item;
           }
 
 
-          return item;
+          return nuevaCantidad > 0
 
-        })
+            ? {
+                ...item,
+                cantidad: nuevaCantidad
+              }
 
-        .filter(Boolean)
+            : null;
 
-    );
+        }
 
-  };
+        return item;
+
+      })
+
+      .filter(Boolean)
+
+  );
+
+};
 
 
   const eliminarProducto = (
@@ -364,19 +404,242 @@ function App() {
      FILTRAR PRODUCTOS
   ================================================== */
 
-  const productosFiltrados =
+  const productosFiltrados = (() => {
 
-    categoriaActual
-      ?.productos
-      ?.filter(producto =>
+  const textoBusqueda =
+    busqueda.trim().toLowerCase();
 
-        producto.nombre
-          .toLowerCase()
-          .includes(
-            busqueda.toLowerCase()
-          )
+  // Siempre trabajar únicamente
+  // con la categoría seleccionada
+  const productosCategoria =
+    categoriaActual?.productos || [];
 
-      ) || [];
+  // Si no hay búsqueda, mostrar todos
+  // los productos de esa categoría
+  if (!textoBusqueda) {
+    return productosCategoria;
+  }
+
+  // Si hay búsqueda, filtrar solamente
+  // dentro de la categoría seleccionada
+  return productosCategoria.filter(producto =>
+    producto.nombre
+      .toLowerCase()
+      .includes(textoBusqueda)
+  );
+
+})();
+
+const productosInventario = (() => {
+
+  const textoBusqueda =
+    busqueda.trim().toLowerCase();
+
+
+  // Convertir el menú en una sola lista de productos
+  let productos = menu.flatMap(categoria =>
+
+    categoria.productos.map(producto => {
+
+      const stock =
+        Number(producto.stock || 0);
+
+      const stockMinimo =
+        Number(producto.stock_minimo || 0);
+
+      let estado = 'Disponible';
+
+      if (stock === 0) {
+        estado = 'Agotado';
+      } else if (stock <= stockMinimo) {
+        estado = 'Stock bajo';
+      }
+
+      return {
+        ...producto,
+        categoria: categoria.categoria,
+        estadoInventario: estado
+      };
+
+    })
+
+  );
+
+
+  // ==========================================
+  // FILTRAR
+  // ==========================================
+
+  if (textoBusqueda) {
+
+    productos = productos.filter(producto => {
+
+      const nombre =
+        producto.nombre.toLowerCase();
+
+      const categoria =
+        producto.categoria.toLowerCase();
+
+      const stock =
+        String(producto.stock);
+
+      const stockMinimo =
+        String(producto.stock_minimo);
+
+      const estado =
+        producto.estadoInventario.toLowerCase();
+
+
+      switch (filtroInventario) {
+
+        case 'producto':
+          return nombre.includes(textoBusqueda);
+
+        case 'categoria':
+          return categoria.includes(textoBusqueda);
+
+        case 'stockActual':
+          return stock.includes(textoBusqueda);
+
+        case 'stockMinimo':
+          return stockMinimo.includes(textoBusqueda);
+
+        case 'estado':
+          return estado.includes(textoBusqueda);
+
+        default:
+          return (
+            nombre.includes(textoBusqueda) ||
+            categoria.includes(textoBusqueda) ||
+            stock.includes(textoBusqueda) ||
+            stockMinimo.includes(textoBusqueda) ||
+            estado.includes(textoBusqueda)
+          );
+
+      }
+
+    });
+
+  }
+
+    // ==========================================
+  // FILTRAR POR CATEGORÍA SELECCIONADA
+  // ==========================================
+
+  if (
+    filtroInventario === 'categoria' &&
+    valorFiltroInventario !== 'todos'
+  ) {
+
+    productos = productos.filter(
+      producto =>
+        producto.categoria === valorFiltroInventario
+    );
+
+  }
+
+
+  // ==========================================
+  // FILTRAR POR ESTADO SELECCIONADO
+  // ==========================================
+
+  if (
+    filtroInventario === 'estado' &&
+    valorFiltroInventario !== 'todos'
+  ) {
+
+    productos = productos.filter(
+      producto =>
+        producto.estadoInventario === valorFiltroInventario
+    );
+
+  }
+
+
+  // ==========================================
+  // ORDENAR
+  // ==========================================
+
+  productos.sort((a, b) => {
+
+    switch (ordenInventario) {
+
+      case 'productoAsc':
+        return a.nombre.localeCompare(
+          b.nombre,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+      case 'productoDesc':
+        return b.nombre.localeCompare(
+          a.nombre,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+
+      case 'categoriaAsc':
+        return a.categoria.localeCompare(
+          b.categoria,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+      case 'categoriaDesc':
+        return b.categoria.localeCompare(
+          a.categoria,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+
+      case 'stockAsc':
+        return Number(a.stock) - Number(b.stock);
+
+      case 'stockDesc':
+        return Number(b.stock) - Number(a.stock);
+
+
+      case 'minimoAsc':
+        return (
+          Number(a.stock_minimo) -
+          Number(b.stock_minimo)
+        );
+
+      case 'minimoDesc':
+        return (
+          Number(b.stock_minimo) -
+          Number(a.stock_minimo)
+        );
+
+
+      case 'estadoAsc':
+        return a.estadoInventario.localeCompare(
+          b.estadoInventario,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+      case 'estadoDesc':
+        return b.estadoInventario.localeCompare(
+          a.estadoInventario,
+          'es',
+          { sensitivity: 'base' }
+        );
+
+
+      default:
+        return 0;
+
+    }
+
+  });
+
+
+  return productos;
+
+})();
 
 
   /* ==================================================
@@ -675,6 +938,23 @@ function App() {
               Bienvenido {usuario.username}
             </div>
 
+            <button
+  type="button"
+  className="management-btn"
+  onClick={() => {
+    setVistaActual(
+      vistaActual === 'inventario'
+        ? 'pos'
+        : 'inventario'
+    );
+
+    setMenuGerenciaAbierto(false);
+  }}
+>
+  {vistaActual === 'inventario'
+    ? 'Punto de venta'
+    : 'Inventario'}
+</button>
 
             {esAdministrador && (
 
@@ -816,6 +1096,7 @@ function App() {
             CUERPO POS
         ========================== */}
 
+        {vistaActual === 'pos' && (
         <div className="pos-body">
 
 
@@ -925,53 +1206,80 @@ function App() {
             <div className="products-grid">
 
 
-              {productosFiltrados.map(
-                producto => (
+              {productosFiltrados.map(producto => {
 
-                  <button
-                    key={
-                      producto.id_producto
-                    }
-                    type="button"
-                    className="product-card"
-                    onClick={() =>
-                      agregarAlCarrito(
-                        producto
-                      )
-                    }
-                  >
+  const stock =
+    Number(producto.stock || 0);
 
+  const stockMinimo =
+    Number(producto.stock_minimo || 0);
 
-                    <div className="product-thumb">
+  const agotado =
+    stock === 0;
 
-                      {producto.nombre
-                        .charAt(0)
-                        .toUpperCase()}
+  const stockBajo =
+    stock > 0 &&
+    stock <= stockMinimo;
 
-                    </div>
+  return (
 
+    <button
+      key={producto.id_producto}
+      type="button"
+      className={
+        agotado
+          ? 'product-card agotado'
+          : 'product-card'
+      }
+      disabled={agotado}
+      onClick={() =>
+        agregarAlCarrito(producto)
+      }
+    >
 
-                    <div className="product-name">
+      <div className="product-thumb">
 
-                      {producto.nombre}
+        {producto.nombre
+          .charAt(0)
+          .toUpperCase()}
 
-                    </div>
-
-
-                    <div className="product-price">
-
-                      {money(
-                        producto.precio
-                      )}
-
-                    </div>
+      </div>
 
 
-                  </button>
+      <div className="product-name">
+        {producto.nombre}
+      </div>
 
-                )
-              )}
 
+      <div className="product-price">
+        {money(producto.precio)}
+      </div>
+
+
+      <div
+        className={
+          agotado
+            ? 'product-stock agotado'
+            : stockBajo
+              ? 'product-stock bajo'
+              : 'product-stock disponible'
+        }
+      >
+
+        {agotado
+          ? 'Agotado'
+          : stockBajo
+            ? `Stock bajo · ${stock}`
+            : `Disponible · ${stock}`
+        }
+
+      </div>
+
+    </button>
+
+  );
+
+})}
 
             </div>
 
@@ -1273,8 +1581,332 @@ function App() {
 
         </div>
 
+        )}
 
+        {/* =========================
+    INVENTARIO
+========================== */}
+
+{vistaActual === 'inventario' && (
+
+  <div className="inventory-view">
+
+    <div className="inventory-header">
+
+      <div>
+        <h2 className="title">
+          Inventario
+        </h2>
+
+        <div className="subtitle">
+          Control de existencias de productos
+        </div>
       </div>
+
+      <div className="inventory-summary">
+        {productosInventario.length}{' '}
+        {productosInventario.length === 1
+          ? 'producto'
+          : 'productos'}
+      </div>
+
+    </div>
+
+          <div className="inventory-controls">
+
+  {/* =========================
+      FILTRAR POR
+  ========================== */}
+
+  <div className="inventory-filter-group">
+
+    <label>
+      Filtrar por
+    </label>
+
+    <select
+      value={filtroInventario}
+      onChange={(e) => {
+        setFiltroInventario(e.target.value);
+        setValorFiltroInventario('todos');
+        setBusqueda('');
+      }}
+    >
+
+      <option value="todos">
+        Todos los campos
+      </option>
+
+      <option value="producto">
+        Producto
+      </option>
+
+      <option value="categoria">
+        Categoría
+      </option>
+
+      <option value="stockActual">
+        Stock actual
+      </option>
+
+      <option value="stockMinimo">
+        Stock mínimo
+      </option>
+
+      <option value="estado">
+        Estado
+      </option>
+
+    </select>
+
+  </div>
+
+
+  {/* =========================
+      SELECCIONAR CATEGORÍA
+      Solo aparece si eliges Categoría
+  ========================== */}
+
+  {filtroInventario === 'categoria' && (
+
+    <div className="inventory-filter-group">
+
+      <label>
+        Categoría
+      </label>
+
+      <select
+        value={valorFiltroInventario}
+        onChange={(e) =>
+          setValorFiltroInventario(
+            e.target.value
+          )
+        }
+      >
+
+        <option value="todos">
+          Todas las categorías
+        </option>
+
+        {menu.map(categoria => (
+
+          <option
+            key={categoria.categoria}
+            value={categoria.categoria}
+          >
+            {categoria.categoria}
+          </option>
+
+        ))}
+
+      </select>
+
+    </div>
+
+  )}
+
+
+  {/* =========================
+      SELECCIONAR ESTADO
+      Solo aparece si eliges Estado
+  ========================== */}
+
+  {filtroInventario === 'estado' && (
+
+    <div className="inventory-filter-group">
+
+      <label>
+        Estado
+      </label>
+
+      <select
+        value={valorFiltroInventario}
+        onChange={(e) =>
+          setValorFiltroInventario(
+            e.target.value
+          )
+        }
+      >
+
+        <option value="todos">
+          Todos los estados
+        </option>
+
+        <option value="Disponible">
+          Disponible
+        </option>
+
+        <option value="Stock bajo">
+          Stock bajo
+        </option>
+
+        <option value="Agotado">
+          Agotado
+        </option>
+
+      </select>
+
+    </div>
+
+  )}
+
+
+  {/* =========================
+      ORDENAR POR
+  ========================== */}
+
+  <div className="inventory-filter-group">
+
+    <label>
+      Ordenar por
+    </label>
+
+    <select
+      value={ordenInventario}
+      onChange={(e) => {
+        setOrdenInventario(
+          e.target.value
+        );
+      }}
+    >
+
+      <option value="predeterminado">
+        Predeterminado
+      </option>
+
+      <option value="productoAsc">
+        Producto: A → Z
+      </option>
+
+      <option value="productoDesc">
+        Producto: Z → A
+      </option>
+
+      <option value="categoriaAsc">
+        Categoría: A → Z
+      </option>
+
+      <option value="categoriaDesc">
+        Categoría: Z → A
+      </option>
+
+      <option value="stockAsc">
+        Stock actual: Menor → Mayor
+      </option>
+
+      <option value="stockDesc">
+        Stock actual: Mayor → Menor
+      </option>
+
+      <option value="minimoAsc">
+        Stock mínimo: Menor → Mayor
+      </option>
+
+      <option value="minimoDesc">
+        Stock mínimo: Mayor → Menor
+      </option>
+
+      <option value="estadoAsc">
+        Estado: A → Z
+      </option>
+
+      <option value="estadoDesc">
+        Estado: Z → A
+      </option>
+
+    </select>
+
+  </div>
+
+</div>
+
+    <div className="inventory-table-wrapper">
+
+      <table className="inventory-table">
+
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Categoría</th>
+            <th>Stock actual</th>
+            <th>Stock mínimo</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+
+
+        <tbody>
+
+          {productosInventario.map(producto => {
+
+  const stock =
+    Number(producto.stock || 0);
+
+  const stockMinimo =
+    Number(producto.stock_minimo || 0);
+
+  let estado = 'Disponible';
+  let claseEstado = 'available';
+
+  if (stock === 0) {
+
+    estado = 'Agotado';
+    claseEstado = 'out';
+
+  } else if (stock <= stockMinimo) {
+
+    estado = 'Stock bajo';
+    claseEstado = 'low';
+
+  }
+
+  return (
+
+    <tr key={producto.id_producto}>
+
+      <td>
+        <strong>
+          {producto.nombre}
+        </strong>
+      </td>
+
+      <td>
+        {producto.categoria}
+      </td>
+
+      <td>
+        {stock}
+      </td>
+
+      <td>
+        {stockMinimo}
+      </td>
+
+      <td>
+        <span
+          className={`stock-status ${claseEstado}`}
+        >
+          {estado}
+        </span>
+      </td>
+
+    </tr>
+
+  );
+
+})}
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+)}
+      </div>
+
 
 
       {/* ==================================================
@@ -1678,6 +2310,7 @@ function App() {
 
             setMostrarConfirmarSalida(false);
 
+            localStorage.removeItem('usuario');
             setUsuario(null);
 
             setCarrito([]);

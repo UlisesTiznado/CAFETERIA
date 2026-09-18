@@ -1777,3 +1777,184 @@ button {
   }
 
 }
+
+/* ==========================================
+   INVENTARIO
+========================================== */
+
+.inventory-view {
+    padding: 30px;
+    flex: 1;
+    background: #f5f1ea;
+    min-height: calc(100vh - 80px);
+}
+
+.inventory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.inventory-summary {
+    padding: 8px 14px;
+    background: #ffffff;
+    border: 1px solid #d8cfc2;
+    border-radius: 8px;
+    color: #625b53;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.inventory-table-wrapper {
+    overflow-x: auto;
+    background: #ffffff;
+    border: 1px solid #d8cfc2;
+    border-radius: 12px;
+}
+
+.inventory-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.inventory-table th {
+    padding: 14px 18px;
+    text-align: left;
+    background: #eee8df;
+    color: #625b53;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.inventory-table td {
+    padding: 16px 18px;
+    border-top: 1px solid #eee8df;
+    color: #493f37;
+    font-size: 13px;
+}
+
+.inventory-table tbody tr:hover {
+    background: #faf7f2;
+}
+
+.stock-status {
+    display: inline-block;
+    min-width: 90px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.stock-status.available {
+    background: #e8f1e5;
+    color: #496348;
+}
+
+.stock-status.low {
+    background: #fff0d6;
+    color: #91621d;
+}
+
+.stock-status.out {
+    background: #f7e4e1;
+    color: #934c43;
+}
+
+/* ==========================================
+   CONTROLES DE INVENTARIO
+========================================== */
+
+.inventory-controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.inventory-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.inventory-filter-group label {
+    color: #70675f;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.inventory-filter-group select {
+    min-width: 220px;
+    height: 42px;
+    padding: 0 38px 0 13px;
+
+    background: #ffffff;
+    border: 1px solid #d8cfc2;
+    border-radius: 8px;
+
+    color: #493f37;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+
+    cursor: pointer;
+    outline: none;
+}
+
+.inventory-filter-group select:focus {
+    border-color: #5a86b5;
+}
+
+@media (max-width: 800px) {
+
+    .inventory-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .inventory-filter-group select {
+        width: 100%;
+    }
+
+}
+
+/* ==========================================
+   STOCK EN PRODUCTOS DEL POS
+========================================== */
+
+.product-stock {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.product-stock.disponible {
+    color: #587354;
+}
+
+.product-stock.bajo {
+    color: #a66b22;
+}
+
+.product-stock.agotado {
+    color: #a64b4b;
+}
+
+
+/* Producto agotado */
+
+.product-card.agotado {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.product-card.agotado:hover {
+    transform: none;
+}

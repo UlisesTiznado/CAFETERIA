@@ -85,36 +85,65 @@ app.post('/api/login', async (req, res) => {
 // Obtener categorías y productos desde la BD
 app.get('/api/menu', async (req, res) => {
     try {
+
         const query = `
-            SELECT p.id_producto, p.nombre, p.precio, c.nombre AS categoria
+            SELECT
+                p.id_producto,
+                p.nombre,
+                p.precio,
+                c.nombre AS categoria,
+                COALESCE(i.stock, 0) AS stock,
+                COALESCE(i.stock_minimo, 0) AS stock_minimo
             FROM public.productos p
-            JOIN public.categorias c ON p.id_categoria = c.id_categoria
+            JOIN public.categorias c
+                ON p.id_categoria = c.id_categoria
+            LEFT JOIN public.inventario i
+                ON i.id_producto = p.id_producto
             ORDER BY c.id_categoria, p.id_producto;
         `;
+
         const result = await pool.query(query);
 
         const categoriasMap = {};
+
         result.rows.forEach(row => {
+
             if (!categoriasMap[row.categoria]) {
+
                 categoriasMap[row.categoria] = {
                     categoria: row.categoria,
                     productos: []
                 };
+
             }
+
             categoriasMap[row.categoria].productos.push({
                 id_producto: row.id_producto,
                 nombre: row.nombre,
-                precio: parseFloat(row.precio)
+                precio: parseFloat(row.precio),
+                stock: parseInt(row.stock),
+                stock_minimo: parseInt(row.stock_minimo)
             });
+
         });
 
-        res.json(Object.values(categoriasMap));
+        res.json(
+            Object.values(categoriasMap)
+        );
+
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error al obtener el menú' });
+
+        console.error(
+            'Error al obtener el menú:',
+            err
+        );
+
+        res.status(500).json({
+            error: 'Error al obtener el menú'
+        });
+
     }
 });
-
 // Registrar venta en PostgreSQL
 app.post('/api/ventas', async (req, res) => {
     const { total, metodo_pago, efectivo_recibido, cambio_entregado, detalles } = req.body;
