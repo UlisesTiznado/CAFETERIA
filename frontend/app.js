@@ -45,6 +45,8 @@ function App() {
   const [mostrarVentaExitosa, setMostrarVentaExitosa] =
   useState(false);
 
+  const [notificacionStock, setNotificacionStock] = useState(null);
+
   const [ultimaVenta, setUltimaVenta] =
   useState(null);
 
@@ -183,12 +185,30 @@ localStorage.setItem(
      CARRITO
   ================================================== */
 
+  const mostrarNotificacionStock = (producto, stock) => {
+
+  setNotificacionStock({
+    producto: producto.nombre,
+    stock: stock
+  });
+
+  setTimeout(() => {
+    setNotificacionStock(null);
+  }, 3000);
+
+};
+
   const agregarAlCarrito = (producto) => {
 
   const stockDisponible = Number(producto.stock || 0);
 
-  // No permitir productos agotados
   if (stockDisponible <= 0) {
+
+    mostrarNotificacionStock(
+      producto,
+      0
+    );
+
     return;
   }
 
@@ -196,17 +216,20 @@ localStorage.setItem(
 
     const existe = prev.find(
       item =>
-        item.id_producto ===
-        producto.id_producto
+        item.id_producto === producto.id_producto
     );
 
     if (existe) {
 
-      // No permitir superar el stock disponible
       if (existe.cantidad >= stockDisponible) {
+
+        mostrarNotificacionStock(
+          producto,
+          stockDisponible
+        );
+
         return prev;
       }
-
       return prev.map(item =>
 
         item.id_producto === producto.id_producto
@@ -261,11 +284,17 @@ localStorage.setItem(
           // Si intenta superar el stock,
           // mantener la cantidad actual
           if (
-            delta > 0 &&
-            nuevaCantidad > stockDisponible
-          ) {
-            return item;
-          }
+  delta > 0 &&
+  nuevaCantidad > stockDisponible
+) {
+
+  mostrarNotificacionStock(
+    item,
+    stockDisponible
+  );
+
+  return item;
+}
 
 
           return nuevaCantidad > 0
@@ -2442,13 +2471,56 @@ setMostrarVentaExitosa(true);
   </div>
 
 )}
+{/* NOTIFICACIÓN DE STOCK */}
 
+{notificacionStock && (
 
-    </>
+  <div className="stock-notification">
+
+    <div className="stock-notification-icon">
+      !
+    </div>
+
+    <div className="stock-notification-content">
+
+      <strong>
+        Stock insuficiente
+      </strong>
+
+      <span>
+        {notificacionStock.stock === 0
+          ? `${notificacionStock.producto} está agotado.`
+          : `Solo hay ${notificacionStock.stock} ${
+              notificacionStock.stock === 1
+                ? 'unidad disponible'
+                : 'unidades disponibles'
+            } de ${notificacionStock.producto}.`
+        }
+      </span>
+
+    </div>
+
+    <button
+      type="button"
+      className="stock-notification-close"
+      onClick={() =>
+        setNotificacionStock(null)
+      }
+    >
+      ×
+    </button>
+
+  </div>
+
+)}
+
+</>
 
   );
 
 }
+
+
 
 
 /* ==================================================

@@ -2053,3 +2053,73 @@ button {
 .success-button:active {
     transform: scale(0.99);
 }
+
+/* ==========================================
+   NOTIFICACIÓN DE STOCK
+========================================== */
+
+.stock-notification {
+    position: fixed;
+    top: 22px;
+    right: 22px;
+    z-index: 9999;
+
+    width: min(380px, calc(100vw - 44px));
+    padding: 15px 16px;
+
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    background: #ffffff;
+    border: 1px solid #e2d7c8;
+    border-radius: 12px;
+
+    box-shadow:
+        0 10px 30px rgba(60, 50, 40, 0.15);
+}
+
+.stock-notification-icon {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background: #f5ead9;
+    color: #a66b22;
+
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.stock-notification-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.stock-notification-content strong {
+    color: #493f37;
+    font-size: 14px;
+}
+
+.stock-notification-content span {
+    color: #81776e;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.stock-notification-close {
+    padding: 2px 5px;
+    background: transparent;
+    border: none;
+    color: #938980;
+    font-size: 20px;
+    cursor: pointer;
+}
