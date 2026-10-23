@@ -46,6 +46,8 @@ function App() {
   const [productoPersonalizando, setProductoPersonalizando] = useState(null);
   const [tamanioSeleccionado, setTamanioSeleccionado] = useState(null);
   const [saborSeleccionado, setSaborSeleccionado] = useState('');
+const [extrasSeleccionados, setExtrasSeleccionados] = useState([]); 
+const [mostrarExtras, setMostrarExtras] = useState(false); 
 
 
   /* ==================================================
@@ -55,6 +57,14 @@ function App() {
   const esAdministrador =
     usuario?.id_rol === 2 ||
     usuario?.rol === 'Administrador';
+    useEffect(() => {
+  if (!usuario) return;
+
+  if (!esAdministrador && vistaActual !== 'pos' && vistaActual !== 'inventario') {
+    setVistaActual('pos');
+    setMenuGerenciaAbierto(false);
+  }
+}, [usuario, esAdministrador, vistaActual]);
 
 
   /* ==================================================
@@ -73,10 +83,22 @@ function App() {
     try {
       const response = await fetch('/api/menu', { cache: 'no-store' });
       const data = await response.json();
-      setMenu(data);
-      if (data.length > 0) {
-        const primeraCategoria = data[0].id_categoria ?? data[0].categoria;
-        setCategoriaSeleccionada(primeraCategoria);
+      
+      // Aseguramos que data sea un arreglo válido
+      const menuData = data || [];
+      setMenu(menuData);
+      
+      if (menuData.length > 0) {
+        // Filtrar las categorías visibles para seleccionar la primera que NO sea un extra
+        const categoriasVisibles = menuData.filter(cat => {
+          const nombreCat = cat.categoria ? cat.categoria.toLowerCase() : '';
+          return !nombreCat.includes('extra');
+        });
+        
+        if (categoriasVisibles.length > 0) {
+          const primeraCategoria = categoriasVisibles[0].id_categoria ?? categoriasVisibles[0].categoria;
+          setCategoriaSeleccionada(primeraCategoria);
+        }
       }
     } catch (error) {
       console.error('Error al cargar el menú:', error);
@@ -100,6 +122,48 @@ function App() {
       setVentasGerencia(data);
     } catch (error) {
       console.error('Error al cargar ventas:', error);
+    }
+  };
+
+
+  /* ==================================================
+     NAVEGACIÓN DE GERENCIA
+  ================================================== */
+
+  const abrirSeccionGerencia = (seccion) => {
+    setVistaActual(seccion);
+    setMenuGerenciaAbierto(false);
+    setBusqueda('');
+  };
+
+  const seccionesGerencia = {
+    proveedores: {
+      titulo: 'Proveedores',
+      descripcion: 'Administración de proveedores y abastecimiento.',
+      icono: '▤',
+      mensaje: 'Aquí podrás administrar los proveedores.',
+      detalle: 'El registro y la consulta de proveedores estarán disponibles próximamente.'
+    },
+    cuentas: {
+      titulo: 'Cuentas',
+      descripcion: 'Administración de cuentas y accesos del sistema.',
+      icono: '◎',
+      mensaje: 'Aquí podrás administrar las cuentas.',
+      detalle: 'La gestión de cuentas estará disponible próximamente.'
+    },
+    empleados: {
+      titulo: 'Empleados',
+      descripcion: 'Administración del personal de la cafetería.',
+      icono: '♙',
+      mensaje: 'Aquí podrás administrar los empleados.',
+      detalle: 'El registro y la consulta de empleados estarán disponibles próximamente.'
+    },
+    reportes: {
+      titulo: 'Reportes',
+      descripcion: 'Resumen de ventas, inventario y actividad de la cafetería.',
+      icono: '▥',
+      mensaje: 'Aquí aparecerán los reportes del sistema.',
+      detalle: 'Los reportes y sus indicadores estarán disponibles próximamente.'
     }
   };
 
@@ -150,8 +214,21 @@ function App() {
         setError(data.message || 'Usuario o contraseña incorrectos');
         return;
       }
-      setUsuario(data.user);
-      localStorage.setItem('usuario', JSON.stringify(data.user));
+      // Cada inicio de sesión comienza en el POS
+setVistaActual('pos');
+setMenuGerenciaAbierto(false);
+
+// Limpiar datos que pudieran pertenecer a la sesión anterior
+setCarrito([]);
+setBusqueda('');
+setMetodoPago('Efectivo');
+setEfectivoRecibido('');
+setVentasGerencia([]);
+setTicketSeleccionado(null);
+
+// Guardar el usuario autenticado
+setUsuario(data.user);
+localStorage.setItem('usuario', JSON.stringify(data.user));
     } catch (err) {
       console.error('Error al iniciar sesión:', err);
       setError('No se pudo conectar con el servidor');
@@ -175,40 +252,58 @@ function App() {
 
  const abrirPersonalizacion = (producto) => {
     setProductoPersonalizando(producto);
+    setExtrasSeleccionados([]); 
+    setMostrarExtras(false);
+
     const nombreLower = (producto.nombre || '').toLowerCase();
     const categoriaLower = (producto.categoria || '').toLowerCase();
 
+    const categoriasBebidas = ['café', 'cafe', 'bebida', 'frappé', 'frappe', 'té', 'te', 'infusion', 'infusiones', 'otras bebidas'];
+    const esCategoriaBebida = categoriasBebidas.some(cat => categoriaLower.includes(cat));
+
+    const palabrasBebida = [
+      'latte', 'espresso', 'moka', 'mocha', 'americano', 'cold brew', 'iced', 
+      'frappé', 'frappe', 'cappuccino', 'capuchino', 'chai', 'matcha', 
+      'chocolate', 'limonada', 'soda', 'té', 'te', 'café', 'cafe', 'macchiato'
+    ];
+    const esNombreBebida = palabrasBebida.some(p => nombreLower.includes(p));
+    const esAguaSimple = nombreLower.includes('agua natural') || nombreLower.includes('agua mineral');
+
+    const esBebida = (esCategoriaBebida || esNombreBebida) && !esAguaSimple;
+    const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
     // Detectar si es cualquier bebida, café, frappé o bebida fría
-    const esBebida = categoriaLower.includes('bebida') || 
-                     categoriaLower.includes('café') || 
-                     categoriaLower.includes('cafe') || 
-                     nombreLower.includes('té') || 
-                     nombreLower.includes('te') || 
-                     nombreLower.includes('latte') || 
-                     nombreLower.includes('americano') || 
-                     nombreLower.includes('frappe') || 
-                     nombreLower.includes('cappuccino') ||
-                     nombreLower.includes('frio') ||
-                     nombreLower.includes('helado') ||
-                     nombreLower.includes('frappé');
+    
 
     if (esBebida) {
+      setProductoPersonalizando(producto);
+      setExtrasSeleccionados([]);
+      setMostrarExtras(false);
       setSaborSeleccionado('Regular');
       setTamanioSeleccionado({ nombre: 'Chico (12 oz)', precio: Number(producto.precio) });
-    } else {
+    } else if (esPastel) {
+      setProductoPersonalizando(producto);
+      setExtrasSeleccionados([]);
+      setMostrarExtras(false);
       setSaborSeleccionado('Chocolate');
       setTamanioSeleccionado({ nombre: 'Porción Individual', precio: Number(producto.precio) });
+    } else {
+      // Alimentos, Panadería, Donas, Galletas y Embotellados pasan directo al carrito con 1 clic
+      agregarAlCarritoPersonalizado({
+        ...producto,
+        precio: Number(producto.precio),
+        customization: ''
+      });
     }
   };
  const confirmarAgregarPersonalizado = () => {
     if (!productoPersonalizando) return;
 
     const nombreLower = (productoPersonalizando.nombre || '').toLowerCase();
-    const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay');
+const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
 
     const customizationText = esPastel
       ? `Sabor: ${saborSeleccionado}`
-      : `${saborSeleccionado} - ${tamanioSeleccionado?.nombre || 'Chico (12 oz)'}`;
+      : `${tamanioSeleccionado?.nombre || 'Chico (12 oz)'}`;
 
     // Bandera explícita de bebida fría
     const esFria = nombreLower.includes('frappe') || 
@@ -217,7 +312,11 @@ function App() {
                    nombreLower.includes('iced') || 
                    nombreLower.includes('fría') || 
                    nombreLower.includes('fria') || 
-                   nombreLower.includes('frio');
+                   nombreLower.includes('frio') ||
+                   nombreLower.includes('cold brew') ||
+                   nombreLower.includes('tonic') ||
+                   nombreLower.includes('limonada') ||
+                   nombreLower.includes('soda');
 
     const itemConPersonalizacion = {
       ...productoPersonalizando,
@@ -227,6 +326,14 @@ function App() {
     };
 
     agregarAlCarritoPersonalizado(itemConPersonalizacion);
+    extrasSeleccionados.forEach(extra => {
+      agregarAlCarritoPersonalizado({
+        ...extra,
+        precio: extra.precio,
+        customization: `(Extra en ${productoPersonalizando.nombre})`
+      });
+    });
+
     setProductoPersonalizando(null);
   };
 
@@ -495,11 +602,21 @@ function App() {
 
                 {menuGerenciaAbierto && (
                   <div className="management-menu">
-                    <button type="button" className="management-item">
-                      <span>Proveedores</span> <span className="management-status soon">próximamente</span>
+                    <button
+                      type="button"
+                      className="management-item"
+                      onClick={() => abrirSeccionGerencia('proveedores')}
+                    >
+                      <span>Proveedores</span>
+                      <span className="management-status soon">vista previa</span>
                     </button>
-                    <button type="button" className="management-item">
-                      <span>Cuentas</span> <span className="management-status soon">próximamente</span>
+                    <button
+                      type="button"
+                      className="management-item"
+                      onClick={() => abrirSeccionGerencia('cuentas')}
+                    >
+                      <span>Cuentas</span>
+                      <span className="management-status soon">vista previa</span>
                     </button>
                     <button
                       type="button"
@@ -512,11 +629,21 @@ function App() {
                     >
                       <span>Ventas</span> <span className="management-status">activo</span>
                     </button>
-                    <button type="button" className="management-item">
-                      <span>Empleados</span> <span className="management-status soon">próximamente</span>
+                    <button
+                      type="button"
+                      className="management-item"
+                      onClick={() => abrirSeccionGerencia('empleados')}
+                    >
+                      <span>Empleados</span>
+                      <span className="management-status soon">vista previa</span>
                     </button>
-                    <button type="button" className="management-item">
-                      <span>Reportes</span> <span className="management-status soon">próximamente</span>
+                    <button
+                      type="button"
+                      className="management-item"
+                      onClick={() => abrirSeccionGerencia('reportes')}
+                    >
+                      <span>Reportes</span>
+                      <span className="management-status soon">vista previa</span>
                     </button>
                   </div>
                 )}
@@ -539,22 +666,27 @@ function App() {
             <aside className="sidebar">
               <div className="side-label">Categorías</div>
               <div className="category-list">
-                {menu.map((cat, index) => {
-                  const idCategoria = cat.id_categoria ?? cat.categoria;
-                  const activa = categoriaSeleccionada === idCategoria;
-                  return (
-                    <button
-                      key={idCategoria || index}
-                      type="button"
-                      className={activa ? 'cat-btn active' : 'cat-btn'}
-                      onClick={() => {
-                        setCategoriaSeleccionada(idCategoria);
-                        setBusqueda('');
-                      }}
-                    >
-                      {cat.categoria}
-                    </button>
-                  );
+                {(menu || [])
+                  .filter(cat => {
+                    const nombreCat = cat.categoria ? cat.categoria.toLowerCase() : '';
+                    return !nombreCat.includes('extra');
+                  })
+                  .map((cat, index) => {
+                    const idCategoria = cat.id_categoria ?? cat.categoria;
+                    const activa = categoriaSeleccionada === idCategoria;
+                    return (
+                      <button
+                        key={idCategoria || index}
+                        type="button"
+                        className={activa ? 'cat-btn active' : 'cat-btn'}
+                        onClick={() => {
+                          setCategoriaSeleccionada(idCategoria);
+                          setBusqueda('');
+                        }}
+                      >
+                        {cat.categoria}
+                      </button>
+                    );
                 })}
               </div>
             </aside>
@@ -704,20 +836,29 @@ function App() {
           </div>
         )}
 
-        {/* VISTA INVENTARIO */}
+                {/* VISTA INVENTARIO */}
         {vistaActual === 'inventario' && (
           <div className="inventory-view">
             <div className="inventory-header">
               <div>
                 <h2 className="title">Inventario e Insumos</h2>
-                <div className="subtitle">Control de existencias y materias primas (Modificable)</div>
+
+                <div className="subtitle">
+                  {esAdministrador
+                    ? 'Control y edición de existencias y materias primas'
+                    : 'Consulta de existencias y materias primas (solo lectura)'}
+                </div>
               </div>
-              <div className="inventory-summary">{productosInventario.length} insumos</div>
+
+              <div className="inventory-summary">
+                {productosInventario.length} insumos
+              </div>
             </div>
 
             <div className="inventory-controls">
               <div className="inventory-filter-group">
                 <label>Filtrar por</label>
+
                 <select
                   value={filtroInventario}
                   onChange={(e) => {
@@ -746,47 +887,112 @@ function App() {
                     <th>Acciones</th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {productosInventario.map(item => {
+                  {productosInventario.map((item) => {
                     let claseEstado = 'available';
-                    if (item.estado === 'Agotado') claseEstado = 'out';
-                    else if (item.estado === 'Stock bajo') claseEstado = 'low';
+
+                    if (item.estado === 'Agotado') {
+                      claseEstado = 'out';
+                    } else if (item.estado === 'Stock bajo') {
+                      claseEstado = 'low';
+                    }
 
                     return (
                       <tr key={item.id_producto}>
-                        <td><strong>{item.producto}</strong></td>
+                        <td>
+                          <strong>{item.producto}</strong>
+                        </td>
+
                         <td>{item.categoria}</td>
+
+                        {/* STOCK ACTUAL */}
                         <td>
-                          <input
-                            type="number"
-                            step="0.001"
-                            defaultValue={item.stock_actual}
-                            style={{ width: '90px', padding: '4px' }}
-                            onBlur={(e) => {
-                              const nuevoStock = e.target.value;
-                              if (nuevoStock !== String(item.stock_actual)) {
-                                actualizarInsumoInventario(item.id_producto, nuevoStock, item.stock_minimo);
-                              }
-                            }}
-                          />
+                          {esAdministrador ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              defaultValue={item.stock_actual}
+                              style={{
+                                width: '90px',
+                                padding: '4px'
+                              }}
+                              onBlur={(e) => {
+                                const nuevoStock = e.target.value;
+
+                                if (
+                                  nuevoStock !==
+                                  String(item.stock_actual)
+                                ) {
+                                  actualizarInsumoInventario(
+                                    item.id_producto,
+                                    nuevoStock,
+                                    item.stock_minimo
+                                  );
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span>{item.stock_actual}</span>
+                          )}
                         </td>
+
+                        {/* STOCK MÍNIMO */}
                         <td>
-                          <input
-                            type="number"
-                            step="0.001"
-                            defaultValue={item.stock_minimo}
-                            style={{ width: '90px', padding: '4px' }}
-                            onBlur={(e) => {
-                              const nuevoMin = e.target.value;
-                              if (nuevoMin !== String(item.stock_minimo)) {
-                                actualizarInsumoInventario(item.id_producto, item.stock_actual, nuevoMin);
-                              }
-                            }}
-                          />
+                          {esAdministrador ? (
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              defaultValue={item.stock_minimo}
+                              style={{
+                                width: '90px',
+                                padding: '4px'
+                              }}
+                              onBlur={(e) => {
+                                const nuevoMin = e.target.value;
+
+                                if (
+                                  nuevoMin !==
+                                  String(item.stock_minimo)
+                                ) {
+                                  actualizarInsumoInventario(
+                                    item.id_producto,
+                                    item.stock_actual,
+                                    nuevoMin
+                                  );
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span>{item.stock_minimo}</span>
+                          )}
                         </td>
+
                         <td>{item.unidad}</td>
-                        <td><span className={`stock-status ${claseEstado}`}>{item.estado}</span></td>
-                        <td><small style={{ color: '#666' }}>Edición automática</small></td>
+
+                        <td>
+                          <span
+                            className={`stock-status ${claseEstado}`}
+                          >
+                            {item.estado}
+                          </span>
+                        </td>
+
+                        <td>
+                          <small
+                            style={{
+                              color: esAdministrador
+                                ? '#666'
+                                : '#9ca3af'
+                            }}
+                          >
+                            {esAdministrador
+                              ? 'Edición habilitada'
+                              : 'Solo lectura'}
+                          </small>
+                        </td>
                       </tr>
                     );
                   })}
@@ -794,6 +1000,41 @@ function App() {
               </table>
             </div>
           </div>
+        )}
+
+        {/* VISTAS DE GERENCIA EN PREPARACIÓN */}
+        {seccionesGerencia[vistaActual] && (
+          <main className="management-page">
+            <div className="management-page-header">
+              <div>
+                <h2 className="title">{seccionesGerencia[vistaActual].titulo}</h2>
+                <div className="subtitle">{seccionesGerencia[vistaActual].descripcion}</div>
+              </div>
+              <span className="management-preview-badge">Boceto</span>
+            </div>
+
+            <section className="management-empty-state">
+              <div className="management-empty-icon">
+                {seccionesGerencia[vistaActual].icono}
+              </div>
+              <h3>{seccionesGerencia[vistaActual].mensaje}</h3>
+              <p>{seccionesGerencia[vistaActual].detalle}</p>
+
+              <div className="management-placeholder-panel" aria-hidden="true">
+                <div className="management-placeholder-line"></div>
+                <div className="management-placeholder-line short"></div>
+                <div className="management-placeholder-line"></div>
+              </div>
+
+              <button
+                type="button"
+                className="management-back-btn"
+                onClick={() => setVistaActual('pos')}
+              >
+                Volver al punto de venta
+              </button>
+            </section>
+          </main>
         )}
 
         {/* VISTA GERENCIA VENTAS */}
@@ -991,21 +1232,32 @@ function App() {
         const nombreLower = (productoPersonalizando.nombre || '').toLowerCase();
         const categoriaLower = (productoPersonalizando.categoria || '').toLowerCase();
         
-        const esBebida = categoriaLower.includes('bebida') || 
-                         categoriaLower.includes('café') || 
-                         categoriaLower.includes('cafe') || 
-                         nombreLower.includes('té') || 
-                         nombreLower.includes('te') || 
-                         nombreLower.includes('latte') || 
-                         nombreLower.includes('americano') || 
-                         nombreLower.includes('frappe') || 
-                         nombreLower.includes('cappuccino') ||
-                         nombreLower.includes('capuchino') ||
-                         nombreLower.includes('frio') ||
-                         nombreLower.includes('helado') ||
-                         nombreLower.includes('frappé');
+        const categoriasBebidas = ['café', 'cafe', 'bebida', 'frappé', 'frappe', 'té', 'te', 'infusion', 'infusiones', 'otras bebidas'];
+        const esCategoriaBebida = categoriasBebidas.some(cat => categoriaLower.includes(cat));
 
-        const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay');
+        const palabrasBebida = [
+          'latte', 'espresso', 'moka', 'mocha', 'americano', 'cold brew', 'iced', 
+          'frappé', 'frappe', 'cappuccino', 'capuchino', 'chai', 'matcha', 
+          'chocolate', 'limonada', 'soda', 'té', 'te', 'café', 'cafe', 'macchiato'
+        ];
+        const esNombreBebida = palabrasBebida.some(p => nombreLower.includes(p));
+        const esAguaSimple = nombreLower.includes('agua natural') || nombreLower.includes('agua mineral');
+
+        const esBebida = (esCategoriaBebida || esNombreBebida) && !esAguaSimple;
+        const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
+  
+
+
+        // Busca cualquier categoría que contenga la palabra "extra" sin importar mayúsculas
+const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().includes('extra'));
+        const listaExtras = categoriaExtras ? categoriaExtras.productos : [];
+        const toggleExtra = (extra) => {
+          setExtrasSeleccionados(prev => {
+            const existe = prev.find(e => e.id_producto === extra.id_producto);
+            if (existe) return prev.filter(e => e.id_producto !== extra.id_producto);
+            return [...prev, extra];
+          });
+        };
 
         return (
           <div className="modal-overlay">
@@ -1020,21 +1272,7 @@ function App() {
 
               {esBebida && !esPastel && (
                 <>
-                  <div style={{ margin: '15px 0' }}>
-                    <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', fontWeight: 'bold' }}>Sabor / Variedad:</label>
-                    <select
-                      value={saborSeleccionado}
-                      onChange={(e) => setSaborSeleccionado(e.target.value)}
-                      style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-                    >
-                      <option value="Regular">Regular / Estándar</option>
-                      <option value="Descafeinado">Descafeinado</option>
-                      <option value="Vainilla">Sabor Vainilla</option>
-                      <option value="Caramelo">Sabor Caramelo</option>
-                      <option value="Moka">Sabor Moka</option>
-                    </select>
-                  </div>
-
+                  {/* SE ELIMINÓ EL SELECT DE SABORES. SOLO QUEDAN LOS TAMAÑOS */}
                   <div style={{ margin: '15px 0' }}>
                     <label style={{ display: 'block', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>Tamaño:</label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1068,6 +1306,74 @@ function App() {
                       })}
                     </div>
                   </div>
+
+                 {/* NUEVA SECCIÓN DE EXTRAS Y COMPLEMENTOS OCULTABLE */}
+                  {listaExtras.length > 0 && (
+                    <div style={{ margin: '15px 0', paddingTop: '10px', borderTop: '1px solid #e5e7eb' }}>
+                      
+                      {/* BOTÓN DESPLEGABLE */}
+                      <button 
+                        type="button" 
+                        onClick={() => setMostrarExtras(!mostrarExtras)}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          width: '100%',
+                          background: 'none',
+                          border: 'none',
+                          padding: '5px 0',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          fontWeight: 'bold',
+                          color: '#374151'
+                        }}
+                      >
+                        <span>
+                          Extras (Opcional) 
+                          {extrasSeleccionados.length > 0 && <span style={{color: '#2563eb'}}> • {extrasSeleccionados.length} seleccionados</span>}
+                        </span>
+                        <span>{mostrarExtras ? '▲' : '▼'}</span>
+                      </button>
+                      
+                      {/* CUADRÍCULA DE EXTRAS (SOLO SE MUESTRA SI mostrarExtras ES TRUE) */}
+                      {mostrarExtras && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', maxHeight: '180px', overflowY: 'auto', paddingRight: '5px', marginTop: '10px' }}>
+                          {listaExtras.map(extra => {
+                            const seleccionado = extrasSeleccionados.some(e => e.id_producto === extra.id_producto);
+                            const agotado = Number(extra.stock || 0) <= 0;
+                            return (
+                              <button
+                                key={extra.id_producto}
+                                type="button"
+                                disabled={agotado}
+                                onClick={() => toggleExtra(extra)}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  padding: '10px 5px',
+                                  borderRadius: '6px',
+                                  border: `1px solid ${seleccionado ? '#2563eb' : '#d1d5db'}`,
+                                  background: agotado ? '#f3f4f6' : seleccionado ? '#eff6ff' : '#fff',
+                                  color: agotado ? '#9ca3af' : '#1f2937',
+                                  fontWeight: seleccionado ? 'bold' : 'normal',
+                                  cursor: agotado ? 'not-allowed' : 'pointer',
+                                  opacity: agotado ? 0.6 : 1,
+                                  transition: 'all 0.2s'
+                                }}
+                              >
+                                <span style={{ fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>{extra.nombre}</span>
+                                <span style={{ fontSize: '12px', color: seleccionado ? '#2563eb' : '#6b7280', fontWeight: 'bold' }}>
+                                  {agotado ? 'Agotado' : `+$${Number(extra.precio).toFixed(2)}`}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
@@ -1084,8 +1390,6 @@ function App() {
                     <option value="Tres Leches">Tres Leches</option>
                     <option value="Queso con Zarzamora">Queso con Zarzamora</option>
                   </select>
-                  <p style={{ margin: '10px 0 0 0', fontSize: '12px', color: '#6b7280' }}>
-                  </p>
                 </div>
               )}
 
@@ -1210,18 +1514,39 @@ function App() {
               <button
                 type="button"
                 className="modal-primary"
-                onClick={() => {
-                  setMostrarConfirmarSalida(false);
-                  localStorage.removeItem('usuario');
-                  setUsuario(null);
-                  setCarrito([]);
-                  setMenuGerenciaAbierto(false);
-                  setMostrarPagoEfectivo(false);
-                  setMostrarConfirmacion(false);
-                  setEfectivoRecibido('');
-                  setUsername('');
-                  setPassword('');
-                }}
+               onClick={() => {
+  // Cerrar la sesión actual
+  setMostrarConfirmarSalida(false);
+  localStorage.removeItem('usuario');
+  setUsuario(null);
+
+  // Restablecer navegación
+  setVistaActual('pos');
+  setMenuGerenciaAbierto(false);
+
+  // Limpiar carrito y datos de la venta
+  setCarrito([]);
+  setMetodoPago('Efectivo');
+  setEfectivoRecibido('');
+  setUltimaVenta(null);
+  setMostrarVentaExitosa(false);
+  setTicketSeleccionado(null);
+  setVentasGerencia([]);
+
+  // Cerrar todos los modales
+  setMostrarPagoEfectivo(false);
+  setMostrarConfirmacion(false);
+  setProductoPersonalizando(null);
+  setMostrarConfirmarSalida(false);
+
+  // Limpiar credenciales y errores
+  setUsername('');
+  setPassword('');
+  setError('');
+
+  // Limpiar búsqueda
+  setBusqueda('');
+}}
               >
                 Sí, cerrar sesión
               </button>

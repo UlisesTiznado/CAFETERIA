@@ -2123,3 +2123,126 @@ button {
     font-size: 20px;
     cursor: pointer;
 }
+
+/* =====================================
+   VISTAS DE GERENCIA
+===================================== */
+
+.management-page {
+  min-height: calc(100vh - 120px);
+  padding: 38px 36px;
+  background: #faf7f2;
+  color: #424d45;
+}
+
+.management-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.management-preview-badge {
+  padding: 8px 14px;
+  border: 1px solid #d9cdbd;
+  border-radius: 20px;
+  color: #81766a;
+  background: #f1ebe2;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.management-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 430px;
+  padding: 40px 24px;
+  border: 1px solid #e3d8ca;
+  border-radius: 16px;
+  background: #fffdfa;
+  text-align: center;
+}
+
+.management-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  margin-bottom: 22px;
+  border-radius: 18px;
+  background: #e6edf4;
+  color: #4f7fb3;
+  font-size: 36px;
+}
+
+.management-empty-state h3 {
+  margin: 0 0 10px;
+  color: #424d45;
+  font-size: 23px;
+}
+
+.management-empty-state > p {
+  max-width: 520px;
+  margin: 0;
+  color: #91877b;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.management-placeholder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(460px, 100%);
+  margin: 30px 0;
+  padding: 22px;
+  border: 1px dashed #ded2c3;
+  border-radius: 12px;
+  background: #fcfaf7;
+}
+
+.management-placeholder-line {
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: #eee7de;
+}
+
+.management-placeholder-line.short {
+  width: 62%;
+}
+
+.management-back-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 9px;
+  background: #507fb2;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.management-back-btn:hover {
+  background: #3f6d9f;
+}
+
+@media (max-width: 768px) {
+  .management-page {
+    padding: 24px 16px;
+  }
+
+  .management-page-header {
+    flex-wrap: wrap;
+  }
+
+  .management-empty-state {
+    min-height: 350px;
+    padding: 28px 18px;
+  }
+}
