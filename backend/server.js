@@ -68,19 +68,31 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/menu', async (req, res) => {
     try {
         const query = `
-            SELECT 
+            SELECT
                 p.id_producto,
                 p.nombre,
                 p.precio,
                 c.nombre AS categoria,
-                COALESCE(MIN(FLOOR(i.stock / r.cantidad_usada)), 0) AS stock,
-                0 AS stock_minimo
+                CASE
+                    -- Productos comprados ya terminados: IDs usados también en el descuento directo de inventario.
+                    WHEN p.id_producto >= 50 OR p.id_producto = 3 THEN
+                        COALESCE((
+                            SELECT FLOOR(i.stock)
+                            FROM public.insumo i
+                            WHERE i.id_insumo = p.id_producto
+                        ), 0)
+                    -- Productos preparados con receta: limita la cantidad por el ingrediente más escaso.
+                    ELSE COALESCE((
+                        SELECT MIN(FLOOR(i.stock / NULLIF(r.cantidad_usada, 0)))
+                        FROM public.receta r
+                        JOIN public.insumo i ON i.id_insumo = r.id_insumo
+                        WHERE r.id_producto = p.id_producto
+                    ), 0)
+                END AS stock,
+                COALESCE(p.stock_minimo, 5) AS stock_minimo
             FROM public.productos p
             JOIN public.categorias c ON p.id_categoria = c.id_categoria
-            LEFT JOIN public.receta r ON p.id_producto = r.id_producto
-            LEFT JOIN public.insumo i ON r.id_insumo = i.id_insumo
             WHERE p.estado = true
-            GROUP BY p.id_producto, p.nombre, p.precio, c.nombre, c.id_categoria
             ORDER BY c.id_categoria, p.id_producto;
         `;
 
@@ -99,13 +111,12 @@ app.get('/api/menu', async (req, res) => {
                 id_producto: row.id_producto,
                 nombre: row.nombre,
                 precio: parseFloat(row.precio),
-                stock: parseInt(row.stock),
-                stock_minimo: parseInt(row.stock_minimo)
+                stock: Number(row.stock || 0),
+                stock_minimo: Number(row.stock_minimo ?? 5)
             });
         });
 
         res.json(Object.values(categoriasMap));
-
     } catch (err) {
         console.error('Error al obtener el menú:', err);
         res.status(500).json({ error: 'Error al obtener el menú' });

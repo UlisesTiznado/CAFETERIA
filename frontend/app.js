@@ -1,5 +1,54 @@
 const { useState, useEffect } = React;
 
+
+/* ==================================================
+   DECORACIÓN VISUAL (iconos) - no afecta la lógica
+================================================== */
+
+function CupIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path className="steam" d="M7.5 4.2c-.9.9.9 1.8 0 2.7" />
+      <path className="steam" d="M11 3.4c-1 1 1 2 0 3.1" />
+      <path className="steam" d="M14.5 4.2c-.9.9.9 1.8 0 2.7" />
+      <path d="M4.5 10h11v4.2a4.6 4.6 0 0 1-4.6 4.6H9.1a4.6 4.6 0 0 1-4.6-4.6V10z" />
+      <path d="M15.5 11h1.4a2.4 2.4 0 0 1 0 4.8h-1.8" />
+      <path d="M3.5 21h13" />
+    </svg>
+  );
+}
+
+const REGLAS_ICONOS = [
+  [/frappe|frio|fria|cold|iced|helad|smoothie/, '🧋'],
+  [/limonada|soda|jugo|refresco|agua/, '🥤'],
+  [/\bte\b|chai|matcha|infus|herbal/, '🍵'],
+  [/galleta|cookie/, '🍪'],
+  [/cafe|espresso|americano|capuch|latte|moka|mocha|cortado|macchiato|flat white|affogato|chocolate caliente/, '☕'],
+  [/brownie|chocolate/, '🍫'],
+  [/pastel|cheesecake|rebanada|\bpay\b|postre|dona|dulce|tarta/, '🍰'],
+  [/bagel/, '🥯'],
+  [/croissant|\bpan\b|concha|cuerno/, '🥐'],
+  [/sandwich|panini|torta|baguette|aliment|snack|ensalada/, '🥪'],
+  [/extra|shot|leche|crema|jarabe|complemento/, '✨']
+];
+
+function buscarIcono(texto) {
+  const t = (texto || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const regla = REGLAS_ICONOS.find(([patron]) => patron.test(t));
+  return regla ? regla[1] : null;
+}
+
+function iconoCategoria(nombre) {
+  return buscarIcono(nombre) || '🍴';
+}
+
+function iconoProducto(nombre) {
+  return buscarIcono(nombre) || (nombre || '?').charAt(0).toUpperCase();
+}
+
 function App() {
 
   /* ==================================================
@@ -20,10 +69,13 @@ function App() {
 
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const [paginaProductos, setPaginaProductos] = useState(1);
+  const [paginaInventario, setPaginaInventario] = useState(1);
+  const PRODUCTOS_POR_PAGINA = 12;
 
-  const [filtroInventario, setFiltroInventario] = useState('todos');
-  const [ordenInventario, setOrdenInventario] = useState('predeterminado');
-  const [valorFiltroInventario, setValorFiltroInventario] = useState('todos');
+  const [tipoInventario, setTipoInventario] = useState('insumos');
+  const [categoriaFiltroInventario, setCategoriaFiltroInventario] = useState('todos');
+  const [busquedaInsumo, setBusquedaInsumo] = useState('');
 
   const [carrito, setCarrito] = useState([]);
   const [metodoPago, setMetodoPago] = useState('Efectivo');
@@ -426,19 +478,50 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
     if (!textoBusqueda) return productosCategoria;
     return productosCategoria.filter(producto => producto.nombre.toLowerCase().includes(textoBusqueda));
   })();
+  const totalPaginasProductos = Math.max(1, Math.ceil(productosFiltrados.length / PRODUCTOS_POR_PAGINA));
+  const productosPagina = productosFiltrados.slice(
+    (paginaProductos - 1) * PRODUCTOS_POR_PAGINA,
+    paginaProductos * PRODUCTOS_POR_PAGINA
+  );
+
+  // Normalizamos los productos del menú para poder filtrarlos junto con los insumos.
+  const productosMenuInventario = menu.flatMap(categoria =>
+    (categoria.productos || []).map(producto => ({
+      ...producto,
+      categoria: categoria.categoria || 'Sin categoría',
+      nombreInventario: producto.nombre || 'Producto sin nombre',
+      tipo: 'producto'
+    }))
+  );
+
+  const datosInventarioActual = tipoInventario === 'insumos'
+    ? inventarioData.map(item => ({
+        ...item,
+        nombreInventario: item.producto || item.nombre || 'Insumo sin nombre',
+        tipo: 'insumo'
+      }))
+    : productosMenuInventario;
+
+  const categoriasInventario = [
+    ...new Set(datosInventarioActual.map(item => item.categoria).filter(Boolean))
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 
   const productosInventario = (() => {
-    const textoBusqueda = busqueda.trim().toLowerCase();
-    let insumos = [...inventarioData];
-    if (textoBusqueda) {
-      insumos = insumos.filter(item => {
-        const nombre = item.producto.toLowerCase();
-        const categoria = item.categoria.toLowerCase();
-        return nombre.includes(textoBusqueda) || categoria.includes(textoBusqueda);
-      });
-    }
-    return insumos;
+    const texto = busquedaInsumo.trim().toLocaleLowerCase('es');
+
+    return datosInventarioActual.filter(item => {
+      const coincideCategoria = categoriaFiltroInventario === 'todos' ||
+        item.categoria === categoriaFiltroInventario;
+      const nombre = (item.nombreInventario || item.nombre || '').toLocaleLowerCase('es');
+      const coincideNombre = texto === '' || nombre.includes(texto);
+      return coincideCategoria && coincideNombre;
+    });
   })();
+  const totalPaginasInventario = Math.max(1, Math.ceil(productosInventario.length / PRODUCTOS_POR_PAGINA));
+  const inventarioPagina = productosInventario.slice(
+    (paginaInventario - 1) * PRODUCTOS_POR_PAGINA,
+    paginaInventario * PRODUCTOS_POR_PAGINA
+  );
 
 
   /* ==================================================
@@ -510,6 +593,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
     return (
       <div className="simple-login-page">
         <div className="simple-login-card">
+          <div className="login-mark"><CupIcon /></div>
           <div className="simple-login-brand">CAFETERÍA ORIGEN</div>
           <div className="simple-login-header">
             <h1>Iniciar sesión</h1>
@@ -561,7 +645,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
         {/* BARRA SUPERIOR */}
         <header className="topbar">
           <div className="brand">
-            <div className="brand-mark">CO</div>
+            <div className="brand-mark"><CupIcon /></div>
             <div>
               <div className="brand-name">Cafetería Origen</div>
               <div className="brand-sub">Sucursal Centro · Caja 1</div>
@@ -573,7 +657,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
             type="text"
             placeholder="Buscar producto o insumo..."
             value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
+            onChange={(e) => { setBusqueda(e.target.value); setPaginaProductos(1); }}
           />
 
           <div className="top-right">
@@ -682,9 +766,11 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         onClick={() => {
                           setCategoriaSeleccionada(idCategoria);
                           setBusqueda('');
+                          setPaginaProductos(1);
                         }}
                       >
-                        {cat.categoria}
+                        <span className="category-icon">{iconoCategoria(cat.categoria)}</span>
+                        <span>{cat.categoria}</span>
                       </button>
                     );
                 })}
@@ -701,7 +787,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
               </div>
 
               <div className="products-grid">
-                {productosFiltrados.map(producto => {
+                {productosPagina.map(producto => {
                   const stock = Number(producto.stock || 0);
                   const stockMinimo = Number(producto.stock_minimo || 0);
                   const agotado = stock === 0;
@@ -716,7 +802,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                       onClick={() => abrirPersonalizacion(producto)}
                     >
                       <div className="product-thumb">
-                        {producto.nombre.charAt(0).toUpperCase()}
+                        {iconoProducto(producto.nombre)}
                       </div>
                       <div className="product-name">{producto.nombre}</div>
                       <div className="product-price">{money(producto.precio)}</div>
@@ -730,6 +816,13 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
 
               {productosFiltrados.length === 0 && (
                 <div className="empty-products">No se encontraron productos.</div>
+              )}
+              {productosFiltrados.length > PRODUCTOS_POR_PAGINA && (
+                <div className="pagination-controls">
+                  <button type="button" disabled={paginaProductos === 1} onClick={() => setPaginaProductos(p => Math.max(1, p - 1))}>Anterior</button>
+                  <span>Página {paginaProductos} de {totalPaginasProductos} · mostrando {productosPagina.length} de {productosFiltrados.length} productos</span>
+                  <button type="button" disabled={paginaProductos >= totalPaginasProductos} onClick={() => setPaginaProductos(p => Math.min(totalPaginasProductos, p + 1))}>Siguiente</button>
+                </div>
               )}
             </main>
 
@@ -752,7 +845,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         <div className="cart-item-top">
                           <span className="cart-item-name">
                             {item.nombre} <br />
-                            <small style={{ color: '#666', fontSize: '11px' }}>{item.customization}</small>
+                            <small className="cart-item-note">{item.customization}</small>
                           </span>
                           <button
                             type="button"
@@ -842,154 +935,179 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
             <div className="inventory-header">
               <div>
                 <h2 className="title">Inventario e Insumos</h2>
-
                 <div className="subtitle">
-                  {esAdministrador
-                    ? 'Control y edición de existencias y materias primas'
-                    : 'Consulta de existencias y materias primas (solo lectura)'}
+                  {tipoInventario === 'insumos'
+                    ? (esAdministrador
+                        ? 'Control y edición de existencias y materias primas'
+                        : 'Consulta de existencias y materias primas (solo lectura)')
+                    : 'Consulta de productos disponibles en el menú de la cafetería'}
                 </div>
               </div>
-
               <div className="inventory-summary">
-                {productosInventario.length} insumos
+                {productosInventario.length} {tipoInventario === 'insumos' ? 'insumos' : 'productos'}
               </div>
             </div>
 
             <div className="inventory-controls">
               <div className="inventory-filter-group">
-                <label>Filtrar por</label>
-
+                <label htmlFor="tipoInventario">Tipo</label>
                 <select
-                  value={filtroInventario}
-                  onChange={(e) => {
-                    setFiltroInventario(e.target.value);
-                    setValorFiltroInventario('todos');
-                    setBusqueda('');
+                  id="tipoInventario"
+                  value={tipoInventario}
+                  onChange={e => {
+                    setTipoInventario(e.target.value);
+                    setCategoriaFiltroInventario('todos');
+                    setBusquedaInsumo('');
+                    setPaginaInventario(1);
                   }}
                 >
-                  <option value="todos">Todos los campos</option>
-                  <option value="producto">Producto / Insumo</option>
-                  <option value="categoria">Categoría</option>
+                  <option value="insumos">Insumos</option>
+                  <option value="productos">Productos de la cafetería</option>
                 </select>
               </div>
+
+              <div className="inventory-filter-group">
+                <label htmlFor="categoriaFiltroInventario">Categoría</label>
+                <select
+                  id="categoriaFiltroInventario"
+                  value={categoriaFiltroInventario}
+                  onChange={e => { setCategoriaFiltroInventario(e.target.value); setPaginaInventario(1); }}
+                >
+                  <option value="todos">Todas las categorías</option>
+                  {categoriasInventario.map(categoria => (
+                    <option key={categoria} value={categoria}>{categoria}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="inventory-filter-group">
+                <label htmlFor="busquedaInsumo">
+                  {tipoInventario === 'insumos' ? 'Insumo' : 'Producto'}
+                </label>
+                <input
+                  id="busquedaInsumo"
+                  type="text"
+                  placeholder={tipoInventario === 'insumos'
+                    ? 'Buscar por nombre del insumo...'
+                    : 'Buscar por nombre del producto...'}
+                  value={busquedaInsumo}
+                  onChange={e => { setBusquedaInsumo(e.target.value); setPaginaInventario(1); }}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="inventory-clear-filters"
+                onClick={() => {
+                  setCategoriaFiltroInventario('todos');
+                  setBusquedaInsumo('');
+                  setPaginaInventario(1);
+                }}
+              >Limpiar filtros</button>
             </div>
 
             <div className="inventory-table-wrapper">
               <table className="inventory-table">
                 <thead>
                   <tr>
-                    <th>Insumo</th>
+                    <th>{tipoInventario === 'insumos' ? 'Insumo' : 'Producto'}</th>
                     <th>Categoría</th>
-                    <th>Stock Actual</th>
-                    <th>Stock Mínimo</th>
-                    <th>Unidad</th>
+                    {tipoInventario === 'insumos' ? (
+                      <>
+                        <th>Stock Actual</th>
+                        <th>Stock Mínimo</th>
+                        <th>Unidad</th>
+                      </>
+                    ) : (
+                      <>
+                        <th>Precio</th>
+                        <th>Stock Actual</th>
+                        <th>Stock Mínimo</th>
+                      </>
+                    )}
                     <th>Estado</th>
                     <th>Acciones</th>
                   </tr>
                 </thead>
-
                 <tbody>
-                  {productosInventario.map((item) => {
-                    let claseEstado = 'available';
-
-                    if (item.estado === 'Agotado') {
-                      claseEstado = 'out';
-                    } else if (item.estado === 'Stock bajo') {
-                      claseEstado = 'low';
-                    }
+                  {productosInventario.length === 0 ? (
+                    <tr>
+                      <td colSpan={tipoInventario === 'insumos' ? 7 : 7} className="table-empty">
+                        No se encontraron {tipoInventario === 'insumos' ? 'insumos' : 'productos'} con esos filtros.
+                      </td>
+                    </tr>
+                  ) : inventarioPagina.map(item => {
+                    const stockProducto = Number(item.stock ?? 0);
+                    const stockMinimoProducto = Number(item.stock_minimo ?? 5);
+                    const estadoProducto = stockProducto <= 0
+                      ? 'Agotado'
+                      : stockProducto <= stockMinimoProducto
+                        ? 'Stock bajo'
+                        : 'Disponible';
+                    const claseEstado = tipoInventario === 'insumos'
+                      ? (item.estado === 'Agotado' ? 'out' : item.estado === 'Stock bajo' ? 'low' : 'available')
+                      : (estadoProducto === 'Agotado' ? 'out' : estadoProducto === 'Stock bajo' ? 'low' : 'available');
 
                     return (
-                      <tr key={item.id_producto}>
-                        <td>
-                          <strong>{item.producto}</strong>
-                        </td>
-
+                      <tr key={`${tipoInventario}-${item.id_producto ?? item.id ?? item.nombreInventario}`}>
+                        <td><strong>{item.nombreInventario}</strong></td>
                         <td>{item.categoria}</td>
 
-                        {/* STOCK ACTUAL */}
-                        <td>
-                          {esAdministrador ? (
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.001"
-                              defaultValue={item.stock_actual}
-                              style={{
-                                width: '90px',
-                                padding: '4px'
-                              }}
-                              onBlur={(e) => {
-                                const nuevoStock = e.target.value;
-
-                                if (
-                                  nuevoStock !==
-                                  String(item.stock_actual)
-                                ) {
-                                  actualizarInsumoInventario(
-                                    item.id_producto,
-                                    nuevoStock,
-                                    item.stock_minimo
-                                  );
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span>{item.stock_actual}</span>
-                          )}
-                        </td>
-
-                        {/* STOCK MÍNIMO */}
-                        <td>
-                          {esAdministrador ? (
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.001"
-                              defaultValue={item.stock_minimo}
-                              style={{
-                                width: '90px',
-                                padding: '4px'
-                              }}
-                              onBlur={(e) => {
-                                const nuevoMin = e.target.value;
-
-                                if (
-                                  nuevoMin !==
-                                  String(item.stock_minimo)
-                                ) {
-                                  actualizarInsumoInventario(
-                                    item.id_producto,
-                                    item.stock_actual,
-                                    nuevoMin
-                                  );
-                                }
-                              }}
-                            />
-                          ) : (
-                            <span>{item.stock_minimo}</span>
-                          )}
-                        </td>
-
-                        <td>{item.unidad}</td>
+                        {tipoInventario === 'insumos' ? (
+                          <>
+                            <td>
+                              {esAdministrador ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.001"
+                                  defaultValue={item.stock_actual}
+                                  className="stock-input"
+                                  onBlur={e => {
+                                    const nuevoStock = e.target.value;
+                                    if (nuevoStock !== String(item.stock_actual)) {
+                                      actualizarInsumoInventario(item.id_producto ?? item.id_insumo, nuevoStock, item.stock_minimo);
+                                    }
+                                  }}
+                                />
+                              ) : <span>{item.stock_actual}</span>}
+                            </td>
+                            <td>
+                              {esAdministrador ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.001"
+                                  defaultValue={item.stock_minimo}
+                                  className="stock-input"
+                                  onBlur={e => {
+                                    const nuevoMin = e.target.value;
+                                    if (nuevoMin !== String(item.stock_minimo)) {
+                                      actualizarInsumoInventario(item.id_producto ?? item.id_insumo, item.stock_actual, nuevoMin);
+                                    }
+                                  }}
+                                />
+                              ) : <span>{item.stock_minimo}</span>}
+                            </td>
+                            <td>{item.unidad || '—'}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td>{money(item.precio)}</td>
+                            <td>{stockProducto}</td>
+                            <td>{stockMinimoProducto}</td>
+                          </>
+                        )}
 
                         <td>
-                          <span
-                            className={`stock-status ${claseEstado}`}
-                          >
-                            {item.estado}
+                          <span className={`stock-status ${claseEstado}`}>
+                            {tipoInventario === 'insumos' ? (item.estado || 'Disponible') : estadoProducto}
                           </span>
                         </td>
-
                         <td>
-                          <small
-                            style={{
-                              color: esAdministrador
-                                ? '#666'
-                                : '#9ca3af'
-                            }}
-                          >
-                            {esAdministrador
-                              ? 'Edición habilitada'
+                          <small className="muted-note">
+                            {tipoInventario === 'insumos'
+                              ? (esAdministrador ? 'Edición habilitada' : 'Solo lectura')
                               : 'Solo lectura'}
                           </small>
                         </td>
@@ -999,6 +1117,13 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                 </tbody>
               </table>
             </div>
+            {productosInventario.length > PRODUCTOS_POR_PAGINA && (
+              <div className="pagination-controls">
+                <button type="button" disabled={paginaInventario === 1} onClick={() => setPaginaInventario(p => Math.max(1, p - 1))}>Anterior</button>
+                <span>Página {paginaInventario} de {totalPaginasInventario} · mostrando {inventarioPagina.length} de {productosInventario.length} {tipoInventario === 'insumos' ? 'insumos' : 'productos'}</span>
+                <button type="button" disabled={paginaInventario >= totalPaginasInventario} onClick={() => setPaginaInventario(p => Math.min(totalPaginasInventario, p + 1))}>Siguiente</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1047,28 +1172,28 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', margin: '20px 0' }}>
-              <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Ingresos Totales</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#111827' }}>
+            <div className="kpi-grid">
+              <div className="kpi-card brown">
+                <div className="kpi-label">Ingresos Totales</div>
+                <div className="kpi-value">
                   {money(ventasGerencia.reduce((sum, v) => sum + v.total, 0))}
                 </div>
               </div>
-              <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Efectivo Recibido</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#059669' }}>
+              <div className="kpi-card green">
+                <div className="kpi-label">Efectivo Recibido</div>
+                <div className="kpi-value">
                   {money(ventasGerencia.filter(v => v.metodo_pago.toLowerCase() === 'efectivo').reduce((sum, v) => sum + (v.efectivo_recibido || v.total), 0))}
                 </div>
               </div>
-              <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Cambio Entregado</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#d97706' }}>
+              <div className="kpi-card amber">
+                <div className="kpi-label">Cambio Entregado</div>
+                <div className="kpi-value">
                   {money(ventasGerencia.reduce((sum, v) => sum + (v.cambio_entregado || 0), 0))}
                 </div>
               </div>
-              <div style={{ background: '#fff', padding: '15px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-                <div style={{ fontSize: '13px', color: '#6b7280' }}>Total Tarjetas</div>
-                <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2563eb' }}>
+              <div className="kpi-card blue">
+                <div className="kpi-label">Total Tarjetas</div>
+                <div className="kpi-value">
                   {money(ventasGerencia.filter(v => v.metodo_pago.toLowerCase() === 'tarjeta').reduce((sum, v) => sum + v.total, 0))}
                 </div>
               </div>
@@ -1093,14 +1218,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                       <td><strong>#TK-{v.folio}</strong></td>
                       <td>{new Date(v.fecha_hora).toLocaleString('es-MX')}</td>
                       <td>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: 'bold',
-                          background: v.metodo_pago.toLowerCase() === 'efectivo' ? '#d1fae5' : '#dbeafe',
-                          color: v.metodo_pago.toLowerCase() === 'efectivo' ? '#065f46' : '#1e40af'
-                        }}>
+                        <span className={`pay-badge ${v.metodo_pago.toLowerCase() === 'efectivo' ? 'efectivo' : 'tarjeta'}`}>
                           {v.metodo_pago.toUpperCase()}
                         </span>
                       </td>
@@ -1111,7 +1229,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         <button
                           type="button"
                           onClick={() => setTicketSeleccionado(v)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+                          className="icon-btn"
                           title="Ver detalle"
                         >
                           📄
@@ -1121,7 +1239,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                   ))}
                   {ventasGerencia.length === 0 && (
                     <tr>
-                      <td colSpan="7" style={{ textAlign: 'center', padding: '20px' }}>
+                      <td colSpan="7" className="table-empty">
                         No hay ventas registradas en el sistema.
                       </td>
                     </tr>
@@ -1131,41 +1249,73 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
             </div>
 
             {ticketSeleccionado && (
-              <div style={{ marginTop: '25px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>Ticket #{ticketSeleccionado.folio}</h3>
-                  <button
-                    type="button"
-                    onClick={() => setTicketSeleccionado(null)}
-                    style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Cerrar
-                  </button>
-                </div>
-                <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '15px' }}>
-                  Fecha: {new Date(ticketSeleccionado.fecha_hora).toLocaleString('es-MX')} | Pago: {ticketSeleccionado.metodo_pago.toUpperCase()} | Recibido: {money(ticketSeleccionado.efectivo_recibido || ticketSeleccionado.total)} | Cambio: {money(ticketSeleccionado.cambio_entregado || 0)}
-                </div>
+              <div
+                className="ticket-modal-overlay"
+                role="presentation"
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget) setTicketSeleccionado(null);
+                }}
+              >
+                <section
+                  className="ticket-detail ticket-detail-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="ticket-detail-title"
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  <div className="ticket-detail-head">
+                    <div>
+                      <div className="ticket-modal-eyebrow">DETALLE DE VENTA</div>
+                      <h3 id="ticket-detail-title">Ticket #{ticketSeleccionado.folio}</h3>
+                      <p className="ticket-modal-description">Resumen de los productos y el pago registrado.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTicketSeleccionado(null)}
+                      className="ticket-modal-x"
+                      aria-label="Cerrar detalle de venta"
+                      title="Cerrar"
+                    >×</button>
+                  </div>
 
-                <table className="inventory-table" style={{ width: '100%' }}>
-                  <thead>
-                    <tr>
-                      <th>PRODUCTO</th>
-                      <th>PRECIO UNIT.</th>
-                      <th>CANT.</th>
-                      <th>SUBTOTAL</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ticketSeleccionado.detalles.map((d, idx) => (
-                      <tr key={idx}>
-                        <td>{d.nombre}</td>
-                        <td>{money(d.precio)}</td>
-                        <td>{d.cantidad}</td>
-                        <td>{money(d.subtotal)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                  <div className="ticket-detail-meta ticket-detail-meta-grid">
+                    <div><span>Fecha</span><strong>{new Date(ticketSeleccionado.fecha_hora).toLocaleString('es-MX')}</strong></div>
+                    <div><span>Método de pago</span><strong>{ticketSeleccionado.metodo_pago.toUpperCase()}</strong></div>
+                    <div><span>Recibido</span><strong>{money(ticketSeleccionado.efectivo_recibido || ticketSeleccionado.total)}</strong></div>
+                    <div><span>Cambio</span><strong>{money(ticketSeleccionado.cambio_entregado || 0)}</strong></div>
+                  </div>
+
+                  <div className="ticket-modal-table-wrap">
+                    <table className="inventory-table">
+                      <thead>
+                        <tr>
+                          <th>PRODUCTO</th>
+                          <th>PRECIO UNIT.</th>
+                          <th>CANT.</th>
+                          <th>SUBTOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ticketSeleccionado.detalles.map((d, idx) => (
+                          <tr key={idx}>
+                            <td>{d.nombre}</td>
+                            <td>{money(d.precio)}</td>
+                            <td>{d.cantidad}</td>
+                            <td>{money(d.subtotal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="ticket-modal-total">
+                    <span>Total de la venta</span>
+                    <strong>{money(ticketSeleccionado.total)}</strong>
+                  </div>
+                  <div className="ticket-modal-footer">
+                    <button type="button" onClick={() => setTicketSeleccionado(null)} className="btn-outline">Cerrar</button>
+                  </div>
+                </section>
               </div>
             )}
           </div>
@@ -1273,9 +1423,9 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
               {esBebida && !esPastel && (
                 <>
                   {/* SE ELIMINÓ EL SELECT DE SABORES. SOLO QUEDAN LOS TAMAÑOS */}
-                  <div style={{ margin: '15px 0' }}>
-                    <label style={{ display: 'block', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>Tamaño:</label>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div className="modal-section">
+                    <label className="modal-label">Tamaño</label>
+                    <div className="option-list">
                       {[
                         { nombre: 'Chico (12 oz)', precio: Number(productoPersonalizando.precio) },
                         { nombre: 'Mediano (16 oz)', precio: Number(productoPersonalizando.precio) + 10 },
@@ -1287,20 +1437,10 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
                             key={idx}
                             type="button"
                             onClick={() => setTamanioSeleccionado(tam)}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              padding: '12px 15px',
-                              borderRadius: '6px',
-                              border: '1px solid #d1d5db',
-                              background: seleccionado ? '#3b82f6' : '#fef3c7',
-                              color: seleccionado ? '#fff' : '#1f2937',
-                              fontWeight: 'bold',
-                              cursor: 'pointer'
-                            }}
+                            className={`option-card${seleccionado ? ' selected' : ''}`}
                           >
-                            <span>{tam.nombre}</span>
-                            <span>${tam.precio.toFixed(2)}</span>
+                            <span className="option-name">{tam.nombre}</span>
+                            <span className="option-price">${tam.precio.toFixed(2)}</span>
                           </button>
                         );
                       })}
@@ -1309,36 +1449,24 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
 
                  {/* NUEVA SECCIÓN DE EXTRAS Y COMPLEMENTOS OCULTABLE */}
                   {listaExtras.length > 0 && (
-                    <div style={{ margin: '15px 0', paddingTop: '10px', borderTop: '1px solid #e5e7eb' }}>
+                    <div className="extras-block">
                       
                       {/* BOTÓN DESPLEGABLE */}
                       <button 
                         type="button" 
                         onClick={() => setMostrarExtras(!mostrarExtras)}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          width: '100%',
-                          background: 'none',
-                          border: 'none',
-                          padding: '5px 0',
-                          cursor: 'pointer',
-                          fontSize: '14px',
-                          fontWeight: 'bold',
-                          color: '#374151'
-                        }}
+                        className="extras-toggle"
                       >
                         <span>
                           Extras (Opcional) 
-                          {extrasSeleccionados.length > 0 && <span style={{color: '#2563eb'}}> • {extrasSeleccionados.length} seleccionados</span>}
+                          {extrasSeleccionados.length > 0 && <span className="extras-count"> · {extrasSeleccionados.length} seleccionados</span>}
                         </span>
                         <span>{mostrarExtras ? '▲' : '▼'}</span>
                       </button>
                       
                       {/* CUADRÍCULA DE EXTRAS (SOLO SE MUESTRA SI mostrarExtras ES TRUE) */}
                       {mostrarExtras && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', maxHeight: '180px', overflowY: 'auto', paddingRight: '5px', marginTop: '10px' }}>
+                        <div className="extras-grid">
                           {listaExtras.map(extra => {
                             const seleccionado = extrasSeleccionados.some(e => e.id_producto === extra.id_producto);
                             const agotado = Number(extra.stock || 0) <= 0;
@@ -1348,25 +1476,12 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
                                 type="button"
                                 disabled={agotado}
                                 onClick={() => toggleExtra(extra)}
-                                style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  alignItems: 'center',
-                                  padding: '10px 5px',
-                                  borderRadius: '6px',
-                                  border: `1px solid ${seleccionado ? '#2563eb' : '#d1d5db'}`,
-                                  background: agotado ? '#f3f4f6' : seleccionado ? '#eff6ff' : '#fff',
-                                  color: agotado ? '#9ca3af' : '#1f2937',
-                                  fontWeight: seleccionado ? 'bold' : 'normal',
-                                  cursor: agotado ? 'not-allowed' : 'pointer',
-                                  opacity: agotado ? 0.6 : 1,
-                                  transition: 'all 0.2s'
-                                }}
+                                className={`extra-chip${seleccionado ? ' selected' : ''}`}
                               >
-                                <span style={{ fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>{extra.nombre}</span>
-                                <span style={{ fontSize: '12px', color: seleccionado ? '#2563eb' : '#6b7280', fontWeight: 'bold' }}>
+                                <span>{extra.nombre}</span>
+                                <small>
                                   {agotado ? 'Agotado' : `+$${Number(extra.precio).toFixed(2)}`}
-                                </span>
+                                </small>
                               </button>
                             );
                           })}
@@ -1378,12 +1493,12 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
               )}
 
               {esPastel && (
-                <div style={{ margin: '15px 0' }}>
-                  <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', fontWeight: 'bold' }}>Sabor de Rebanada:</label>
+                <div className="modal-section">
+                  <label className="modal-label">Sabor de rebanada</label>
                   <select
                     value={saborSeleccionado}
                     onChange={(e) => setSaborSeleccionado(e.target.value)}
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                    className="field-select"
                   >
                     <option value="Chocolate">Chocolate</option>
                     <option value="Zanahoria">Zanahoria</option>
@@ -1576,3 +1691,5 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
+
