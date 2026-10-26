@@ -197,12 +197,12 @@ function App() {
       mensaje: 'Aquí podrás administrar los proveedores.',
       detalle: 'El registro y la consulta de proveedores estarán disponibles próximamente.'
     },
-    cuentas: {
-      titulo: 'Cuentas',
-      descripcion: 'Administración de cuentas y accesos del sistema.',
+    Contabilidad: {
+      titulo: 'Contabilidad',
+      descripcion: 'Administración de Contabilidad de la empresa.',
       icono: '◎',
-      mensaje: 'Aquí podrás administrar las cuentas.',
-      detalle: 'La gestión de cuentas estará disponible próximamente.'
+      mensaje: 'Aquí podrás administrar las finanzas.',
+      detalle: 'La gestión de contabilidad estará disponible próximamente.'
     },
     empleados: {
       titulo: 'Empleados',
@@ -840,14 +840,14 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                       onClick={() => abrirSeccionGerencia('proveedores')}
                     >
                       <span>Proveedores</span>
-                      <span className="management-status soon">vista previa</span>
+                      <span className="management-status active">activo</span>
                     </button>
                     <button
                       type="button"
                       className="management-item"
-                      onClick={() => abrirSeccionGerencia('cuentas')}
+                      onClick={() => abrirSeccionGerencia('Contabilidad')}
                     >
-                      <span>Cuentas</span>
+                      <span>Contabilidad</span>
                       <span className="management-status soon">vista previa</span>
                     </button>
                     <button
@@ -1965,9 +1965,3 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
-
-
-
-
-
-
