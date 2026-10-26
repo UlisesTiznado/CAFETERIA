@@ -18,35 +18,13 @@ function CupIcon() {
   );
 }
 
-const REGLAS_ICONOS = [
-  [/frappe|frio|fria|cold|iced|helad|smoothie/, '🧋'],
-  [/limonada|soda|jugo|refresco|agua/, '🥤'],
-  [/\bte\b|chai|matcha|infus|herbal/, '🍵'],
-  [/galleta|cookie/, '🍪'],
-  [/cafe|espresso|americano|capuch|latte|moka|mocha|cortado|macchiato|flat white|affogato|chocolate caliente/, '☕'],
-  [/brownie|chocolate/, '🍫'],
-  [/pastel|cheesecake|rebanada|\bpay\b|postre|dona|dulce|tarta/, '🍰'],
-  [/bagel/, '🥯'],
-  [/croissant|\bpan\b|concha|cuerno/, '🥐'],
-  [/sandwich|panini|torta|baguette|aliment|snack|ensalada/, '🥪'],
-  [/extra|shot|leche|crema|jarabe|complemento/, '✨']
-];
-
-function buscarIcono(texto) {
-  const t = (texto || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-  const regla = REGLAS_ICONOS.find(([patron]) => patron.test(t));
-  return regla ? regla[1] : null;
-}
-
-function iconoCategoria(nombre) {
-  return buscarIcono(nombre) || '🍴';
-}
-
-function iconoProducto(nombre) {
-  return buscarIcono(nombre) || (nombre || '?').charAt(0).toUpperCase();
+function ReceiptIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
+      <path d="M9 8h6M9 12h6" />
+    </svg>
+  );
 }
 
 function App() {
@@ -92,15 +70,38 @@ function App() {
   const [notificacionStock, setNotificacionStock] = useState(null);
   const [ultimaVenta, setUltimaVenta] = useState(null);
   const [ventasGerencia, setVentasGerencia] = useState([]);
+  const [paginaVentas, setPaginaVentas] = useState(1);
   const [ticketSeleccionado, setTicketSeleccionado] = useState(null);
+
+  // Administración de proveedores
+  const [proveedores, setProveedores] = useState([]);
+  const [cargandoProveedores, setCargandoProveedores] = useState(false);
+  const [busquedaProveedor, setBusquedaProveedor] = useState('');
+  const [paginaProveedores, setPaginaProveedores] = useState(1);
+  const [modalProveedorAbierto, setModalProveedorAbierto] = useState(false);
+  const [proveedorEditando, setProveedorEditando] = useState(null);
+  const [guardandoProveedor, setGuardandoProveedor] = useState(false);
+  const [formProveedor, setFormProveedor] = useState({ nombre: '', contacto: '', telefono: '', estado: 'Activo' });
+  const [modalInsumosProveedor, setModalInsumosProveedor] = useState(false);
+  const [proveedorInsumosActual, setProveedorInsumosActual] = useState(null);
+  const [catalogoInsumosProveedor, setCatalogoInsumosProveedor] = useState([]);
+  const [insumosProveedorSeleccionados, setInsumosProveedorSeleccionados] = useState({});
+  const [cargandoInsumosProveedor, setCargandoInsumosProveedor] = useState(false);
+  const [guardandoInsumosProveedor, setGuardandoInsumosProveedor] = useState(false);
+  const PROVEEDORES_POR_PAGINA = 12;
+  const VENTAS_POR_PAGINA = 12;
 
   // Estados para Personalización
   const [productoPersonalizando, setProductoPersonalizando] = useState(null);
   const [tamanioSeleccionado, setTamanioSeleccionado] = useState(null);
   const [saborSeleccionado, setSaborSeleccionado] = useState('');
-const [extrasSeleccionados, setExtrasSeleccionados] = useState([]); 
-const [mostrarExtras, setMostrarExtras] = useState(false); 
+  const [extrasSeleccionados, setExtrasSeleccionados] = useState([]); 
+  const [mostrarExtras, setMostrarExtras] = useState(false); 
 
+  const [errorVenta, setErrorVenta] = useState({
+  visible: false,
+  mensaje: ''
+});
 
   /* ==================================================
      USUARIO / ROL
@@ -247,6 +248,138 @@ const [mostrarExtras, setMostrarExtras] = useState(false);
     }
   };
 
+
+  /* ==================================================
+     CRUD DE PROVEEDORES
+  ================================================== */
+  const cargarProveedores = async () => {
+    setCargandoProveedores(true);
+    try {
+      const response = await fetch('/api/proveedores', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los proveedores');
+      setProveedores(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Error al cargar proveedores:', err);
+      alert(err.message || 'Error de conexión al cargar proveedores');
+    } finally {
+      setCargandoProveedores(false);
+    }
+  };
+
+  const abrirNuevoProveedor = () => {
+    setProveedorEditando(null);
+    setFormProveedor({ nombre: '', contacto: '', telefono: '', estado: 'Activo' });
+    setModalProveedorAbierto(true);
+  };
+
+  const abrirEditarProveedor = (proveedor) => {
+    setProveedorEditando(proveedor);
+    setFormProveedor({
+      nombre: proveedor.nombre || '', contacto: proveedor.contacto || '',
+      telefono: proveedor.telefono || '', estado: proveedor.estado || 'Activo'
+    });
+    setModalProveedorAbierto(true);
+  };
+
+  const guardarProveedor = async (e) => {
+    e.preventDefault();
+    if (!formProveedor.nombre.trim()) return alert('Escribe el nombre del proveedor.');
+    setGuardandoProveedor(true);
+    try {
+      const response = await fetch(proveedorEditando ? `/api/proveedores/${proveedorEditando.id_proveedor}` : '/api/proveedores', {
+        method: proveedorEditando ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formProveedor, nombre: formProveedor.nombre.trim() })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar el proveedor');
+      setModalProveedorAbierto(false);
+      await cargarProveedores();
+    } catch (err) {
+      console.error('Error al guardar proveedor:', err);
+      alert(err.message || 'Error de conexión al guardar proveedor');
+    } finally {
+      setGuardandoProveedor(false);
+    }
+  };
+
+  const abrirInsumosProveedor = async (proveedor) => {
+    setProveedorInsumosActual(proveedor);
+    setModalInsumosProveedor(true);
+    setCargandoInsumosProveedor(true);
+    try {
+      const [catalogoRes, asignadosRes] = await Promise.all([
+        fetch('/api/insumos-proveedor', { cache: 'no-store' }),
+        fetch(`/api/proveedores/${proveedor.id_proveedor}/insumos`, { cache: 'no-store' })
+      ]);
+      const catalogoData = await catalogoRes.json();
+      const asignadosData = await asignadosRes.json();
+      if (!catalogoRes.ok) throw new Error(catalogoData.error || 'No se pudo cargar el catálogo de insumos');
+      if (!asignadosRes.ok) throw new Error(asignadosData.error || 'No se pudieron cargar los insumos del proveedor');
+      setCatalogoInsumosProveedor(Array.isArray(catalogoData) ? catalogoData : []);
+      const seleccion = {};
+      (Array.isArray(asignadosData) ? asignadosData : []).forEach(item => {
+        seleccion[item.id_insumo] = { seleccionado: true, precio_compra: String(item.precio_compra ?? '') };
+      });
+      setInsumosProveedorSeleccionados(seleccion);
+    } catch (err) {
+      console.error('Error al cargar insumos del proveedor:', err);
+      alert(err.message || 'Error de conexión al consultar insumos');
+      setModalInsumosProveedor(false);
+    } finally {
+      setCargandoInsumosProveedor(false);
+    }
+  };
+
+  const guardarInsumosProveedor = async (e) => {
+    e.preventDefault();
+    if (!proveedorInsumosActual) return;
+    const insumos = Object.entries(insumosProveedorSeleccionados)
+      .filter(([, valor]) => valor.seleccionado)
+      .map(([id, valor]) => ({ id_insumo: Number(id), precio_compra: Number(valor.precio_compra) }));
+    if (insumos.some(i => !Number.isFinite(i.precio_compra) || i.precio_compra < 0)) {
+      alert('Indica un precio de compra válido y mayor o igual a cero para cada insumo seleccionado.');
+      return;
+    }
+    setGuardandoInsumosProveedor(true);
+    try {
+      const response = await fetch(`/api/proveedores/${proveedorInsumosActual.id_proveedor}/insumos`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ insumos })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudieron guardar los insumos');
+      setModalInsumosProveedor(false);
+      await cargarProveedores();
+      alert('Insumos y precios guardados correctamente.');
+    } catch (err) {
+      console.error('Error al guardar insumos del proveedor:', err);
+      alert(err.message || 'Error de conexión al guardar insumos');
+    } finally {
+      setGuardandoInsumosProveedor(false);
+    }
+  };
+
+  const cambiarEstadoProveedor = async (proveedor) => {
+    const estadoNuevo = (proveedor.estado || 'Activo') === 'Activo' ? 'Inactivo' : 'Activo';
+    if (!window.confirm(`¿Deseas marcar a ${proveedor.nombre} como ${estadoNuevo.toLowerCase()}?`)) return;
+    try {
+      const response = await fetch(`/api/proveedores/${proveedor.id_proveedor}/estado`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estado: estadoNuevo })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
+      await cargarProveedores();
+    } catch (err) {
+      console.error('Error al cambiar estado:', err);
+      alert(err.message || 'Error de conexión al cambiar estado');
+    }
+  };
+
+  useEffect(() => {
+    if (usuario && vistaActual === 'proveedores') cargarProveedores();
+  }, [usuario, vistaActual]);
 
   /* ==================================================
      LOGIN
@@ -557,9 +690,15 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.message || 'Error al registrar la venta');
-        return false;
-      }
+    console.error('Error al registrar la venta:', data);
+
+    setErrorVenta({
+        visible: true,
+        mensaje: data.message || data.error || 'No se pudo registrar la venta. Inténtalo nuevamente.'
+    });
+
+    return false;
+}
 
       setUltimaVenta({
         total: total,
@@ -594,7 +733,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
       <div className="simple-login-page">
         <div className="simple-login-card">
           <div className="login-mark"><CupIcon /></div>
-          <div className="simple-login-brand">CAFETERÍA ORIGEN</div>
+          <div className="simple-login-brand">Cafetería Origen</div>
           <div className="simple-login-header">
             <h1>Iniciar sesión</h1>
             <p>Ingresa tus credenciales para acceder al punto de venta.</p>
@@ -634,6 +773,14 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
   }
 
 
+  // Paginación del historial: mostrar 12 ventas por página sin alterar los totales generales.
+  const totalPaginasVentas = Math.max(1, Math.ceil(ventasGerencia.length / VENTAS_POR_PAGINA));
+  const paginaVentasSegura = Math.min(paginaVentas, totalPaginasVentas);
+  const ventasPaginaActual = ventasGerencia.slice(
+    (paginaVentasSegura - 1) * VENTAS_POR_PAGINA,
+    paginaVentasSegura * VENTAS_POR_PAGINA
+  );
+
   /* ==================================================
      POS / INVENTARIO / GERENCIA VIEW
   ================================================== */
@@ -654,6 +801,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
 
           <input
             className="search"
+            aria-label="Buscar producto o insumo"
             type="text"
             placeholder="Buscar producto o insumo..."
             value={busqueda}
@@ -711,7 +859,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         cargarVentasGerencia();
                       }}
                     >
-                      <span>Ventas</span> <span className="management-status">activo</span>
+                      <span>Ventas</span> <span className="management-status active">activo</span>
                     </button>
                     <button
                       type="button"
@@ -769,8 +917,8 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                           setPaginaProductos(1);
                         }}
                       >
-                        <span className="category-icon">{iconoCategoria(cat.categoria)}</span>
-                        <span>{cat.categoria}</span>
+                        <span className="category-name">{cat.categoria}</span>
+                        <span className="category-count">{(cat.productos || []).length}</span>
                       </button>
                     );
                 })}
@@ -801,9 +949,6 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                       disabled={agotado}
                       onClick={() => abrirPersonalizacion(producto)}
                     >
-                      <div className="product-thumb">
-                        {iconoProducto(producto.nombre)}
-                      </div>
                       <div className="product-name">{producto.nombre}</div>
                       <div className="product-price">{money(producto.precio)}</div>
                       <div className={agotado ? 'product-stock agotado' : stockBajo ? 'product-stock bajo' : 'product-stock disponible'}>
@@ -837,7 +982,8 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                 <div className="receipt-items">
                   {carrito.length === 0 ? (
                     <div className="empty-cart">
-                      Selecciona productos para<br />comenzar la venta.
+                      <ReceiptIcon />
+                      <span>Selecciona productos para<br />comenzar la venta.</span>
                     </div>
                   ) : (
                     carrito.map((item, idx) => (
@@ -850,6 +996,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                           <button
                             type="button"
                             className="trash-btn"
+                            aria-label="Quitar producto"
                             onClick={() => eliminarProducto(item.id_producto, item.customization)}
                           >
                             ×
@@ -860,6 +1007,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                             <button
                               type="button"
                               onClick={() => cambiarCantidad(item.id_producto, -1, item.customization)}
+                              aria-label="Disminuir cantidad"
                             >
                               −
                             </button>
@@ -867,6 +1015,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                             <button
                               type="button"
                               onClick={() => cambiarCantidad(item.id_producto, 1, item.customization)}
+                              aria-label="Aumentar cantidad"
                             >
                               +
                             </button>
@@ -888,7 +1037,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                   <span>{money(iva)}</span>
                 </div>
                 <div className="total-final">
-                  <span>TOTAL</span>
+                  <span>Total</span>
                   <span>{money(total)}</span>
                 </div>
 
@@ -1127,38 +1276,98 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
           </div>
         )}
 
-        {/* VISTAS DE GERENCIA EN PREPARACIÓN */}
-        {seccionesGerencia[vistaActual] && (
-          <main className="management-page">
-            <div className="management-page-header">
+        {/* MÓDULO DE PROVEEDORES */}
+        {vistaActual === 'proveedores' && (
+          <main className="management-page" style={{ width: '100%', maxWidth: 'none', boxSizing: 'border-box', padding: '26px 28px' }}>
+            <div className="management-page-header" style={{ width: '100%', boxSizing: 'border-box' }}>
               <div>
-                <h2 className="title">{seccionesGerencia[vistaActual].titulo}</h2>
-                <div className="subtitle">{seccionesGerencia[vistaActual].descripcion}</div>
+                <h2 className="title">Proveedores</h2>
+                <div className="subtitle">Administra los datos de contacto y el estado de tus proveedores.</div>
               </div>
-              <span className="management-preview-badge">Boceto</span>
+              <button type="button" className="management-back-btn" onClick={abrirNuevoProveedor}>+ Nuevo proveedor</button>
             </div>
 
-            <section className="management-empty-state">
-              <div className="management-empty-icon">
-                {seccionesGerencia[vistaActual].icono}
+            <section className="management-placeholder-panel" style={{ width: '100%', maxWidth: 'none', minWidth: 0, boxSizing: 'border-box', padding: 24, background: '#fff', borderRadius: 14, border: '1px solid #e8dfd3', marginTop: 18, boxShadow: '0 3px 12px rgba(54, 43, 29, 0.04)' }}>
+              <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 22 }}>
+                <div><strong style={{ fontSize: 22 }}>{proveedores.length}</strong><div className="subtitle">Proveedores registrados</div></div>
+                <input type="search" value={busquedaProveedor} onChange={e => { setBusquedaProveedor(e.target.value); setPaginaProveedores(1); }} placeholder="Buscar por nombre, contacto o teléfono..." aria-label="Buscar proveedores" style={{ width: 360, minWidth: 260, maxWidth: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid #d5d9e0', borderRadius: 9, background: '#fff', fontSize: 14 }} />
               </div>
-              <h3>{seccionesGerencia[vistaActual].mensaje}</h3>
-              <p>{seccionesGerencia[vistaActual].detalle}</p>
-
-              <div className="management-placeholder-panel" aria-hidden="true">
-                <div className="management-placeholder-line"></div>
-                <div className="management-placeholder-line short"></div>
-                <div className="management-placeholder-line"></div>
-              </div>
-
-              <button
-                type="button"
-                className="management-back-btn"
-                onClick={() => setVistaActual('pos')}
-              >
-                Volver al punto de venta
-              </button>
+              {cargandoProveedores ? <p>Cargando proveedores...</p> : (() => {
+                const filtrados = proveedores.filter(p => [p.nombre, p.contacto, p.telefono, p.estado].some(v => String(v || '').toLowerCase().includes(busquedaProveedor.toLowerCase().trim())));
+                const paginas = Math.max(1, Math.ceil(filtrados.length / PROVEEDORES_POR_PAGINA));
+                const pagina = Math.min(paginaProveedores, paginas);
+                const visibles = filtrados.slice((pagina - 1) * PROVEEDORES_POR_PAGINA, pagina * PROVEEDORES_POR_PAGINA);
+                return <>
+                  <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, tableLayout: 'auto' }}>
+                      <thead><tr style={{ textAlign: 'left', background: '#f7f8fa' }}>{['Proveedor', 'Contacto', 'Teléfono', 'Estado', 'Insumos', 'Acciones'].map(t => <th key={t} style={{ padding: '14px 16px', borderBottom: '1px solid #e6e8ec', whiteSpace: 'nowrap', fontSize: 13, color: '#34413b' }}>{t}</th>)}</tr></thead>
+                      <tbody>
+                        {visibles.map(p => <tr key={p.id_proveedor}>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 180 }}><strong style={{ overflowWrap: 'anywhere' }}>{p.nombre}</strong><div style={{ color: '#7b8492', fontSize: 12 }}>ID: {p.id_proveedor}</div></td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 220, overflowWrap: 'anywhere' }}>{p.contacto || '—'}</td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 150, whiteSpace: 'nowrap' }}>{p.telefono || '—'}</td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3' }}><span style={{ display: 'inline-block', padding: '5px 9px', borderRadius: 20, fontSize: 12, background: (p.estado || 'Activo') === 'Activo' ? '#e4f7ec' : '#f0f1f3', color: (p.estado || 'Activo') === 'Activo' ? '#197443' : '#5f6670' }}>{p.estado || 'Activo'}</span></td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" onClick={() => abrirInsumosProveedor(p)} style={{ marginRight: 8 }}>Ver insumos ({p.total_insumos || 0})</button></td><td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" onClick={() => abrirEditarProveedor(p)} style={{ marginRight: 8 }}>Editar</button><button type="button" onClick={() => cambiarEstadoProveedor(p)}>{(p.estado || 'Activo') === 'Activo' ? 'Desactivar' : 'Activar'}</button></td>
+                        </tr>)}
+                        {visibles.length === 0 && <tr><td colSpan="6" style={{ padding: 24, textAlign: 'center', color: '#697386' }}>{filtrados.length === 0 ? 'No hay proveedores que coincidan con la búsqueda.' : 'No hay registros en esta página.'}</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pagination-controls" style={{ marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <button type="button" disabled={pagina <= 1} onClick={() => setPaginaProveedores(p => Math.max(1, p - 1))}>Anterior</button>
+                    <span>Página {pagina} de {paginas} · {filtrados.length} proveedores</span>
+                    <button type="button" disabled={pagina >= paginas} onClick={() => setPaginaProveedores(p => Math.min(paginas, p + 1))}>Siguiente</button>
+                  </div>
+                </>;
+              })()}
             </section>
+
+            {modalInsumosProveedor && <div role="presentation" onClick={e => { if (e.target === e.currentTarget && !guardandoInsumosProveedor) setModalInsumosProveedor(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(15,23,42,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="titulo-insumos-proveedor" style={{ width: '100%', maxWidth: 820, maxHeight: '88vh', overflowY: 'auto', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.22)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div><h2 id="titulo-insumos-proveedor" style={{ margin: '0 0 6px' }}>Insumos del proveedor</h2><p className="subtitle" style={{ margin: 0 }}>{proveedorInsumosActual?.nombre} · Selecciona los insumos que suministra e indica su precio de compra.</p></div>
+                  <button type="button" onClick={() => setModalInsumosProveedor(false)} disabled={guardandoInsumosProveedor}>Cerrar</button>
+                </div>
+                {cargandoInsumosProveedor ? <p style={{ padding: 24, textAlign: 'center' }}>Cargando catálogo de insumos...</p> : <form onSubmit={guardarInsumosProveedor}>
+                  {catalogoInsumosProveedor.length === 0 ? <p>No hay insumos registrados en el inventario.</p> : <div style={{ overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10, marginTop: 18 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+                      <thead><tr style={{ background: '#faf8f5', textAlign: 'left' }}>{['Incluir', 'Insumo', 'Unidad', 'Precio de compra'].map(t => <th key={t} style={{ padding: 12, borderBottom: '1px solid #e8e1d8', whiteSpace: 'nowrap' }}>{t}</th>)}</tr></thead>
+                      <tbody>{catalogoInsumosProveedor.map(insumo => {
+                        const valor = insumosProveedorSeleccionados[insumo.id_insumo] || { seleccionado: false, precio_compra: '' };
+                        return <tr key={insumo.id_insumo}>
+                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}><input type="checkbox" checked={Boolean(valor.seleccionado)} onChange={e => setInsumosProveedorSeleccionados(prev => ({ ...prev, [insumo.id_insumo]: { ... (prev[insumo.id_insumo] || { precio_compra: '' }), seleccionado: e.target.checked } }))} aria-label={`Incluir ${insumo.nombre}`} /></td>
+                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}><strong>{insumo.nombre}</strong><div style={{ color: '#7b8492', fontSize: 12 }}>ID: {insumo.id_insumo}</div></td>
+                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}>{insumo.unidad || '—'}</td>
+                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6', minWidth: 160 }}><input type="number" min="0" step="0.01" value={valor.precio_compra} disabled={!valor.seleccionado} onChange={e => setInsumosProveedorSeleccionados(prev => ({ ...prev, [insumo.id_insumo]: { ... (prev[insumo.id_insumo] || { seleccionado: false }), precio_compra: e.target.value } }))} placeholder="0.00" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px', border: '1px solid #d8d1c8', borderRadius: 8 }} required={Boolean(valor.seleccionado)} /></td>
+                        </tr>;
+                      })}</tbody>
+                    </table>
+                  </div>}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 20 }}><span className="subtitle">Los cambios se guardarán en proveedor_insumo.</span><div style={{ display: 'flex', gap: 10 }}><button type="button" onClick={() => setModalInsumosProveedor(false)} disabled={guardandoInsumosProveedor}>Cancelar</button><button type="submit" disabled={guardandoInsumosProveedor || cargandoInsumosProveedor}>{guardandoInsumosProveedor ? 'Guardando...' : 'Guardar insumos'}</button></div></div>
+                </form>}
+              </section>
+            </div>}
+
+            {modalProveedorAbierto && <div role="presentation" onClick={e => { if (e.target === e.currentTarget) setModalProveedorAbierto(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+              <section role="dialog" aria-modal="true" aria-labelledby="titulo-modal-proveedor" style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
+                <h2 id="titulo-modal-proveedor" style={{ marginTop: 0 }}>{proveedorEditando ? 'Editar proveedor' : 'Nuevo proveedor'}</h2>
+                <form onSubmit={guardarProveedor}>
+                  <label style={{ display: 'block', marginBottom: 14 }}>Nombre *<input required maxLength="150" value={formProveedor.nombre} onChange={e => setFormProveedor(f => ({ ...f, nombre: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
+                  <label style={{ display: 'block', marginBottom: 14 }}>Contacto<input maxLength="150" value={formProveedor.contacto} onChange={e => setFormProveedor(f => ({ ...f, contacto: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
+                  <label style={{ display: 'block', marginBottom: 14 }}>Teléfono<input maxLength="40" value={formProveedor.telefono} onChange={e => setFormProveedor(f => ({ ...f, telefono: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
+                  <label style={{ display: 'block', marginBottom: 20 }}>Estado<select value={formProveedor.estado} onChange={e => setFormProveedor(f => ({ ...f, estado: e.target.value }))} style={{ display: 'block', width: '100%', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></label>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>Cancelar</button><button type="submit" disabled={guardandoProveedor}>{guardandoProveedor ? 'Guardando...' : 'Guardar proveedor'}</button></div>
+                </form>
+              </section>
+            </div>}
+          </main>
+        )}
+
+        {/* OTRAS VISTAS DE GERENCIA EN PREPARACIÓN */}
+        {seccionesGerencia[vistaActual] && vistaActual !== 'proveedores' && (
+          <main className="management-page">
+            <div className="management-page-header"><div><h2 className="title">{seccionesGerencia[vistaActual].titulo}</h2><div className="subtitle">{seccionesGerencia[vistaActual].descripcion}</div></div><span className="management-preview-badge">Boceto</span></div>
+            <section className="management-empty-state"><div className="management-empty-icon">{seccionesGerencia[vistaActual].icono}</div><h3>{seccionesGerencia[vistaActual].mensaje}</h3><p>{seccionesGerencia[vistaActual].detalle}</p><div className="management-placeholder-panel" aria-hidden="true"><div className="management-placeholder-line"></div><div className="management-placeholder-line short"></div><div className="management-placeholder-line"></div></div><button type="button" className="management-back-btn" onClick={() => setVistaActual('pos')}>Volver al punto de venta</button></section>
           </main>
         )}
 
@@ -1203,23 +1412,23 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
               <table className="inventory-table">
                 <thead>
                   <tr>
-                    <th>FOLIO TICKET</th>
-                    <th>FECHA</th>
-                    <th>MÉTODO</th>
-                    <th>MONTO PAGADO</th>
-                    <th>CAMBIO</th>
-                    <th>TOTAL VENTA</th>
-                    <th>DETALLE</th>
+                    <th>Folio</th>
+                    <th>Fecha</th>
+                    <th>Método</th>
+                    <th>Monto pagado</th>
+                    <th>Cambio</th>
+                    <th>Total de venta</th>
+                    <th>Detalle</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ventasGerencia.map(v => (
+                  {ventasPaginaActual.map(v => (
                     <tr key={v.folio}>
                       <td><strong>#TK-{v.folio}</strong></td>
                       <td>{new Date(v.fecha_hora).toLocaleString('es-MX')}</td>
                       <td>
                         <span className={`pay-badge ${v.metodo_pago.toLowerCase() === 'efectivo' ? 'efectivo' : 'tarjeta'}`}>
-                          {v.metodo_pago.toUpperCase()}
+                          {v.metodo_pago}
                         </span>
                       </td>
                       <td>{money(v.efectivo_recibido || v.total)}</td>
@@ -1229,10 +1438,11 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         <button
                           type="button"
                           onClick={() => setTicketSeleccionado(v)}
-                          className="icon-btn"
-                          title="Ver detalle"
+                          className="sales-detail-button"
+                          title="Consultar detalle de la venta"
                         >
-                          📄
+                          <span aria-hidden="true">▤</span>
+                          Ver detalle
                         </button>
                       </td>
                     </tr>
@@ -1247,6 +1457,47 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                 </tbody>
               </table>
             </div>
+
+            {ventasGerencia.length > 0 && (
+              <div className="pagination-controls sales-pagination" style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+                marginTop: '16px',
+                padding: '8px 2px'
+              }}>
+                <span style={{ color: 'var(--text-muted, #777)', fontSize: '13px' }}>
+                  Mostrando {(paginaVentasSegura - 1) * VENTAS_POR_PAGINA + 1}
+                  {'–'}{Math.min(paginaVentasSegura * VENTAS_POR_PAGINA, ventasGerencia.length)}
+                  {' '}de {ventasGerencia.length} ventas
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={paginaVentasSegura === 1}
+                    onClick={() => setPaginaVentas(p => Math.max(1, p - 1))}
+                    style={{ opacity: paginaVentasSegura === 1 ? 0.5 : 1, cursor: paginaVentasSegura === 1 ? 'not-allowed' : 'pointer' }}
+                  >
+                    Anterior
+                  </button>
+                  <span style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                    Página {paginaVentasSegura} de {totalPaginasVentas}
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    disabled={paginaVentasSegura >= totalPaginasVentas}
+                    onClick={() => setPaginaVentas(p => Math.min(totalPaginasVentas, p + 1))}
+                    style={{ opacity: paginaVentasSegura >= totalPaginasVentas ? 0.5 : 1, cursor: paginaVentasSegura >= totalPaginasVentas ? 'not-allowed' : 'pointer' }}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
 
             {ticketSeleccionado && (
               <div
@@ -1265,7 +1516,6 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                 >
                   <div className="ticket-detail-head">
                     <div>
-                      <div className="ticket-modal-eyebrow">DETALLE DE VENTA</div>
                       <h3 id="ticket-detail-title">Ticket #{ticketSeleccionado.folio}</h3>
                       <p className="ticket-modal-description">Resumen de los productos y el pago registrado.</p>
                     </div>
@@ -1280,7 +1530,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
 
                   <div className="ticket-detail-meta ticket-detail-meta-grid">
                     <div><span>Fecha</span><strong>{new Date(ticketSeleccionado.fecha_hora).toLocaleString('es-MX')}</strong></div>
-                    <div><span>Método de pago</span><strong>{ticketSeleccionado.metodo_pago.toUpperCase()}</strong></div>
+                    <div><span>Método de pago</span><strong>{ticketSeleccionado.metodo_pago}</strong></div>
                     <div><span>Recibido</span><strong>{money(ticketSeleccionado.efectivo_recibido || ticketSeleccionado.total)}</strong></div>
                     <div><span>Cambio</span><strong>{money(ticketSeleccionado.cambio_entregado || 0)}</strong></div>
                   </div>
@@ -1289,10 +1539,10 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                     <table className="inventory-table">
                       <thead>
                         <tr>
-                          <th>PRODUCTO</th>
-                          <th>PRECIO UNIT.</th>
-                          <th>CANT.</th>
-                          <th>SUBTOTAL</th>
+                          <th>Producto</th>
+                          <th>Precio unit.</th>
+                          <th>Cant.</th>
+                          <th>Subtotal</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1685,11 +1935,39 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
           <button type="button" className="stock-notification-close" onClick={() => setNotificacionStock(null)}>×</button>
         </div>
       )}
+
+      {errorVenta.visible && (
+    <div className="modal-error-overlay">
+        <div className="modal-error">
+            <div className="modal-error-icon">!</div>
+
+            <h2>No se pudo registrar la venta</h2>
+
+            <p>{errorVenta.mensaje}</p>
+
+            <button
+                type="button"
+                onClick={() =>
+                    setErrorVenta({
+                        visible: false,
+                        mensaje: ''
+                    })
+                }
+            >
+                Entendido
+            </button>
+        </div>
+    </div>
+)}
     </>
   );
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
+
+
+
 
 

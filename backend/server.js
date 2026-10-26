@@ -225,6 +225,88 @@ app.post('/api/ventas', async (req, res) => {
     try {
         await client.query('BEGIN');
 
+        // VALIDACIÓN PREVIA: impedir que una venta deje insumos con stock negativo.
+        // Se agrupa el consumo de todos los productos del carrito para detectar
+        // también cuando varios productos necesitan el mismo insumo.
+        const consumoPorInsumo = new Map();
+        const agregarConsumo = (idInsumo, cantidad) => {
+            if (!idInsumo || !Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) return;
+            const id = Number(idInsumo);
+            consumoPorInsumo.set(id, (consumoPorInsumo.get(id) || 0) + Number(cantidad));
+        };
+
+        for (const item of (detalles || [])) {
+            const cantidad = Number(item.cantidad);
+            if (!Number.isFinite(cantidad) || cantidad <= 0) {
+                const error = new Error('La cantidad de los productos debe ser mayor que cero.');
+                error.statusCode = 400;
+                throw error;
+            }
+
+            const esReposteriaDirecta = Number(item.id_producto) >= 50 || Number(item.id_producto) === 3;
+            if (esReposteriaDirecta) {
+                agregarConsumo(item.id_producto, cantidad);
+                continue;
+            }
+
+            let factorIngredientes = 1.0;
+            let idInsumoEmpaque = null;
+            if (item.customization) {
+                if (item.customization.includes('Chico')) {
+                    factorIngredientes = 1.0;
+                    idInsumoEmpaque = 5;
+                } else if (item.customization.includes('Mediano')) {
+                    factorIngredientes = 1.35;
+                    idInsumoEmpaque = 6;
+                } else if (item.customization.includes('Grande')) {
+                    factorIngredientes = 1.7;
+                    idInsumoEmpaque = 7;
+                }
+            }
+
+            const nombreItemLower = (item.nombre || '').toLowerCase();
+            const esBebidaFria = item.es_fria === true || nombreItemLower.includes('frappe') ||
+                nombreItemLower.includes('frappé') || nombreItemLower.includes('helado') ||
+                nombreItemLower.includes('iced') || nombreItemLower.includes('fría') ||
+                nombreItemLower.includes('fria') || nombreItemLower.includes('frio');
+            const idInsumoTapa = esBebidaFria ? 9 : 8;
+
+            const recetas = await client.query(
+                `SELECT id_insumo, cantidad_usada FROM public.receta WHERE id_producto = $1`,
+                [item.id_producto]
+            );
+            for (const receta of recetas.rows) {
+                agregarConsumo(receta.id_insumo, Number(receta.cantidad_usada) * cantidad * factorIngredientes);
+            }
+            if (idInsumoEmpaque) {
+                agregarConsumo(idInsumoEmpaque, cantidad);
+                agregarConsumo(idInsumoTapa, cantidad);
+            }
+        }
+
+        // Bloquea las filas hasta que termine la transacción para evitar que
+        // dos ventas simultáneas consuman las mismas existencias.
+        for (const [idInsumo, requerido] of consumoPorInsumo.entries()) {
+            const stockRes = await client.query(
+                `SELECT id_insumo, nombre, stock FROM public.insumo WHERE id_insumo = $1 FOR UPDATE`,
+                [idInsumo]
+            );
+            if (stockRes.rows.length === 0) {
+                const error = new Error(`No se encontró el insumo con ID ${idInsumo}.`);
+                error.statusCode = 400;
+                throw error;
+            }
+            const insumo = stockRes.rows[0];
+            if (Number(insumo.stock) < requerido) {
+                const disponible = Number(insumo.stock);
+                const error = new Error(
+                    `Stock insuficiente de "${insumo.nombre}". Disponible: ${disponible}; requerido para esta venta: ${requerido.toFixed(2)}.`
+                );
+                error.statusCode = 409;
+                throw error;
+            }
+        }
+
         // 1. Insertar la venta principal
         const ventaRes = await client.query(
             `INSERT INTO public.ventas (total, metodo_pago, efectivo_recibido, cambio_entregado) 
@@ -320,11 +402,180 @@ app.post('/api/ventas', async (req, res) => {
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Error en la transacción de venta:', err);
-        res.status(500).json({ error: 'Error al registrar la venta y actualizar existencias' });
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Error al registrar la venta y actualizar existencias' });
     } finally {
         client.release();
     }
 });
+
+// ==========================================
+// CRUD DE PROVEEDORES
+// Tabla existente: public.proveedor
+// ==========================================
+app.get('/api/proveedores', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT p.id_proveedor, p.nombre, p.contacto, p.telefono,
+                   COALESCE(NULLIF(p.estado, ''), 'Activo') AS estado,
+                   COUNT(pi.id_insumo)::int AS total_insumos
+            FROM public.proveedor p
+            LEFT JOIN public.proveedor_insumo pi ON pi.id_proveedor = p.id_proveedor
+            GROUP BY p.id_proveedor, p.nombre, p.contacto, p.telefono, p.estado
+            ORDER BY p.id_proveedor DESC;
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al obtener proveedores:', err);
+        res.status(500).json({ error: 'Error al obtener proveedores' });
+    }
+});
+
+app.post('/api/proveedores', async (req, res) => {
+    const nombre = String(req.body.nombre || '').trim();
+    const contacto = String(req.body.contacto || '').trim() || null;
+    const telefono = String(req.body.telefono || '').trim() || null;
+    const estado = String(req.body.estado || 'Activo').trim();
+    if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
+    if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
+    try {
+        const result = await pool.query(`
+            INSERT INTO public.proveedor (nombre, contacto, telefono, estado)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id_proveedor, nombre, contacto, telefono, estado;
+        `, [nombre, contacto, telefono, estado]);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al registrar proveedor:', err);
+        res.status(500).json({ error: 'Error al registrar proveedor' });
+    }
+});
+
+app.put('/api/proveedores/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    const nombre = String(req.body.nombre || '').trim();
+    const contacto = String(req.body.contacto || '').trim() || null;
+    const telefono = String(req.body.telefono || '').trim() || null;
+    const estado = String(req.body.estado || 'Activo').trim();
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido' });
+    if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
+    if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
+    try {
+        const result = await pool.query(`
+            UPDATE public.proveedor
+            SET nombre = $1, contacto = $2, telefono = $3, estado = $4
+            WHERE id_proveedor = $5
+            RETURNING id_proveedor, nombre, contacto, telefono, estado;
+        `, [nombre, contacto, telefono, estado, id]);
+        if (!result.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al actualizar proveedor:', err);
+        res.status(500).json({ error: 'Error al actualizar proveedor' });
+    }
+});
+
+app.patch('/api/proveedores/:id/estado', async (req, res) => {
+    const id = Number(req.params.id);
+    const estado = String(req.body.estado || '').trim();
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido' });
+    if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
+    try {
+        const result = await pool.query(`UPDATE public.proveedor SET estado = $1 WHERE id_proveedor = $2 RETURNING id_proveedor, nombre, contacto, telefono, estado`, [estado, id]);
+        if (!result.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al cambiar estado del proveedor:', err);
+        res.status(500).json({ error: 'Error al cambiar el estado del proveedor' });
+    }
+});
+
+// ==========================================
+// INSUMOS Y PRECIOS POR PROVEEDOR
+// Usa las tablas existentes public.insumo y public.proveedor_insumo.
+// ==========================================
+app.get('/api/insumos-proveedor', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id_insumo, nombre, unidad
+            FROM public.insumo
+            ORDER BY nombre ASC;
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al obtener catálogo de insumos para proveedores:', err);
+        res.status(500).json({ error: 'Error al obtener el catálogo de insumos' });
+    }
+});
+
+app.get('/api/proveedores/:id/insumos', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador de proveedor no válido' });
+    try {
+        const proveedor = await pool.query('SELECT id_proveedor FROM public.proveedor WHERE id_proveedor = $1', [id]);
+        if (!proveedor.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
+        const result = await pool.query(`
+            SELECT i.id_insumo, i.nombre, i.unidad, pi.precio_compra
+            FROM public.proveedor_insumo pi
+            JOIN public.insumo i ON i.id_insumo = pi.id_insumo
+            WHERE pi.id_proveedor = $1
+            ORDER BY i.nombre ASC;
+        `, [id]);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al consultar insumos del proveedor:', err);
+        res.status(500).json({ error: 'Error al consultar los insumos del proveedor' });
+    }
+});
+
+app.put('/api/proveedores/:id/insumos', async (req, res) => {
+    const id = Number(req.params.id);
+    const insumos = req.body.insumos;
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador de proveedor no válido' });
+    if (!Array.isArray(insumos)) return res.status(400).json({ error: 'La lista de insumos no es válida' });
+    const vistos = new Set();
+    for (const item of insumos) {
+        const idInsumo = Number(item.id_insumo);
+        const precio = Number(item.precio_compra);
+        if (!Number.isInteger(idInsumo) || idInsumo <= 0 || !Number.isFinite(precio) || precio < 0) {
+            return res.status(400).json({ error: 'Cada insumo debe tener un identificador válido y un precio mayor o igual a cero' });
+        }
+        if (vistos.has(idInsumo)) return res.status(400).json({ error: 'Hay insumos duplicados en la solicitud' });
+        vistos.add(idInsumo);
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const proveedor = await client.query('SELECT id_proveedor FROM public.proveedor WHERE id_proveedor = $1 FOR UPDATE', [id]);
+        if (!proveedor.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Proveedor no encontrado' });
+        }
+        for (const item of insumos) {
+            const existe = await client.query('SELECT id_insumo FROM public.insumo WHERE id_insumo = $1', [Number(item.id_insumo)]);
+            if (!existe.rowCount) throw new Error(`El insumo ${item.id_insumo} no existe`);
+        }
+        // El contenido enviado representa la lista completa: quitar asociaciones desmarcadas.
+        await client.query('DELETE FROM public.proveedor_insumo WHERE id_proveedor = $1', [id]);
+        for (const item of insumos) {
+            await client.query(`
+                INSERT INTO public.proveedor_insumo (id_proveedor, id_insumo, precio_compra)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (id_proveedor, id_insumo)
+                DO UPDATE SET precio_compra = EXCLUDED.precio_compra;
+            `, [id, Number(item.id_insumo), Number(item.precio_compra)]);
+        }
+        await client.query('COMMIT');
+        res.json({ success: true, total_insumos: insumos.length });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al guardar insumos del proveedor:', err);
+        res.status(500).json({ error: err.message && err.message.startsWith('El insumo ') ? err.message : 'Error al guardar los insumos del proveedor' });
+    } finally {
+        client.release();
+    }
+});
+
 // Ruta principal SPA
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
@@ -332,3 +583,5 @@ app.get('*', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Servidor ejecutándose en http://localhost:${PORT}`));
+
+
