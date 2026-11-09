@@ -224,9 +224,13 @@ function App() {
   /* ==================================================
      ACTUALIZAR INVENTARIO (CRUD / EDITAR)
   ================================================== */
-  const actualizarInsumoInventario = async (id_insumo, nuevoStock, nuevoMinStock) => {
+  const actualizarInsumoInventario = async (id_insumo, nuevoStock, nuevoMinStock, tipo = 'insumo') => {
     try {
-      const response = await fetch(`/api/inventario/${id_insumo}`, {
+      const endpoint = tipo === 'producto'
+        ? `/api/inventario/productos/${id_insumo}`
+        : `/api/inventario/${id_insumo}`;
+
+      const response = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -436,92 +440,80 @@ localStorage.setItem('usuario', JSON.stringify(data.user));
   };
 
  const abrirPersonalizacion = (producto) => {
-    setProductoPersonalizando(producto);
-    setExtrasSeleccionados([]); 
-    setMostrarExtras(false);
+    // La API /api/menu debe entregar tamanos y extras configurados para cada producto.
+    const tamanos = Array.isArray(producto.tamanos) ? producto.tamanos : [];
+    const extras = Array.isArray(producto.extras) ? producto.extras : [];
 
-    const nombreLower = (producto.nombre || '').toLowerCase();
-    const categoriaLower = (producto.categoria || '').toLowerCase();
-
-    const categoriasBebidas = ['café', 'cafe', 'bebida', 'frappé', 'frappe', 'té', 'te', 'infusion', 'infusiones', 'otras bebidas'];
-    const esCategoriaBebida = categoriasBebidas.some(cat => categoriaLower.includes(cat));
-
-    const palabrasBebida = [
-      'latte', 'espresso', 'moka', 'mocha', 'americano', 'cold brew', 'iced', 
-      'frappé', 'frappe', 'cappuccino', 'capuchino', 'chai', 'matcha', 
-      'chocolate', 'limonada', 'soda', 'té', 'te', 'café', 'cafe', 'macchiato'
-    ];
-    const esNombreBebida = palabrasBebida.some(p => nombreLower.includes(p));
-    const esAguaSimple = nombreLower.includes('agua natural') || nombreLower.includes('agua mineral');
-
-    const esBebida = (esCategoriaBebida || esNombreBebida) && !esAguaSimple;
-    const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
-    // Detectar si es cualquier bebida, café, frappé o bebida fría
-    
-
-    if (esBebida) {
-      setProductoPersonalizando(producto);
-      setExtrasSeleccionados([]);
-      setMostrarExtras(false);
-      setSaborSeleccionado('Regular');
-      setTamanioSeleccionado({ nombre: 'Chico (12 oz)', precio: Number(producto.precio) });
-    } else if (esPastel) {
-      setProductoPersonalizando(producto);
-      setExtrasSeleccionados([]);
-      setMostrarExtras(false);
-      setSaborSeleccionado('Chocolate');
-      setTamanioSeleccionado({ nombre: 'Porción Individual', precio: Number(producto.precio) });
-    } else {
-      // Alimentos, Panadería, Donas, Galletas y Embotellados pasan directo al carrito con 1 clic
+    // Si no hay opciones configuradas, se agrega el producto con su precio normal.
+    if (tamanos.length === 0 && extras.length === 0) {
       agregarAlCarritoPersonalizado({
         ...producto,
         precio: Number(producto.precio),
+        id_tamano: null,
+        extras_seleccionados: [],
         customization: ''
       });
+      return;
     }
+
+    setProductoPersonalizando(producto);
+    setExtrasSeleccionados([]);
+    setMostrarExtras(false);
+    setSaborSeleccionado('');
+    setTamanioSeleccionado(tamanos.length > 0 ? tamanos[0] : null);
   };
- const confirmarAgregarPersonalizado = () => {
+
+  const confirmarAgregarPersonalizado = () => {
     if (!productoPersonalizando) return;
 
+    const tamanos = Array.isArray(productoPersonalizando.tamanos) ? productoPersonalizando.tamanos : [];
+    if (tamanos.length > 0 && !tamanioSeleccionado) {
+      alert('Selecciona un tamaño para continuar.');
+      return;
+    }
+
+    const tamano = tamanioSeleccionado;
+    const precioBase = Number(productoPersonalizando.precio || 0);
+    const modificador = Number(tamano?.modificador_precio || 0);
+    const precioProducto = tamano?.precio != null
+      ? Number(tamano.precio)
+      : precioBase + modificador;
+
+    const extras = extrasSeleccionados.map(extra => ({
+      id_producto: extra.id_producto,
+      nombre: extra.nombre,
+      precio: Number(extra.precio || 0)
+    }));
+    const customizationParts = [];
+    if (tamano?.nombre) customizationParts.push(tamano.nombre);
+    if (saborSeleccionado) customizationParts.push(`Sabor: ${saborSeleccionado}`);
+    if (extras.length) customizationParts.push(`Extras: ${extras.map(e => e.nombre).join(', ')}`);
+
     const nombreLower = (productoPersonalizando.nombre || '').toLowerCase();
-const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
+    const esFria = ['frappe', 'frappé', 'helado', 'iced', 'fría', 'fria', 'frio', 'cold brew', 'tonic', 'limonada', 'soda']
+      .some(palabra => nombreLower.includes(palabra));
 
-    const customizationText = esPastel
-      ? `Sabor: ${saborSeleccionado}`
-      : `${tamanioSeleccionado?.nombre || 'Chico (12 oz)'}`;
-
-    // Bandera explícita de bebida fría
-    const esFria = nombreLower.includes('frappe') || 
-                   nombreLower.includes('frappé') || 
-                   nombreLower.includes('helado') || 
-                   nombreLower.includes('iced') || 
-                   nombreLower.includes('fría') || 
-                   nombreLower.includes('fria') || 
-                   nombreLower.includes('frio') ||
-                   nombreLower.includes('cold brew') ||
-                   nombreLower.includes('tonic') ||
-                   nombreLower.includes('limonada') ||
-                   nombreLower.includes('soda');
-
-    const itemConPersonalizacion = {
+    agregarAlCarritoPersonalizado({
       ...productoPersonalizando,
-      precio: tamanioSeleccionado ? tamanioSeleccionado.precio : productoPersonalizando.precio,
-      customization: customizationText,
-      es_fria: esFria // <--- Propiedad enviada
-    };
+      precio: precioProducto,
+      id_tamano: tamano?.id_tamano ?? tamano?.id ?? null,
+      extras_seleccionados: [], // Los extras se registran como renglones separados para evitar doble consumo/cobro.
+      customization: customizationParts.join(' · '),
+      es_fria: esFria
+    });
 
-    agregarAlCarritoPersonalizado(itemConPersonalizacion);
+    // Los extras se agregan como renglones separados para conservar el esquema actual de ventas.
     extrasSeleccionados.forEach(extra => {
       agregarAlCarritoPersonalizado({
         ...extra,
-        precio: extra.precio,
-        customization: `(Extra en ${productoPersonalizando.nombre})`
+        precio: Number(extra.precio || 0),
+        customization: `(Extra en ${productoPersonalizando.nombre})`,
+        es_extra: true
       });
     });
 
     setProductoPersonalizando(null);
   };
-
   const agregarAlCarritoPersonalizado = (productoPersonalizado) => {
     const stockDisponible = Number(productoPersonalizado.stock || 0);
     if (stockDisponible <= 0) {
@@ -628,12 +620,23 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
   );
 
   const datosInventarioActual = tipoInventario === 'insumos'
-    ? inventarioData.map(item => ({
-        ...item,
-        nombreInventario: item.producto || item.nombre || 'Insumo sin nombre',
-        tipo: 'insumo'
-      }))
-    : productosMenuInventario;
+    ? inventarioData
+        .filter(item => item.tipo !== 'producto')
+        .map(item => ({
+          ...item,
+          nombreInventario: item.producto || item.nombre || 'Insumo sin nombre',
+          tipo: 'insumo'
+        }))
+    : inventarioData
+        .filter(item => item.tipo === 'producto')
+        .map(item => ({
+          ...item,
+          nombreInventario: item.producto || item.nombre || 'Producto sin nombre',
+          tipo: 'producto',
+          precio: Number(item.precio || 0),
+          stock: Number(item.stock_actual || 0),
+          stock_minimo: Number(item.stock_minimo || 0)
+        }));
 
   const categoriasInventario = [
     ...new Set(datosInventarioActual.map(item => item.categoria).filter(Boolean))
@@ -677,7 +680,9 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
         cantidad: item.cantidad,
         precio: Number(item.precio),
         customization: item.customization || '',
-        es_fria: item.es_fria || false // 
+        id_tamano: item.id_tamano ?? null,
+        extras_seleccionados: item.extras_seleccionados || [],
+        es_fria: item.es_fria || false
       }))
     };
 
@@ -1243,8 +1248,40 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                         ) : (
                           <>
                             <td>{money(item.precio)}</td>
-                            <td>{stockProducto}</td>
-                            <td>{stockMinimoProducto}</td>
+                            <td>
+                              {esAdministrador ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  defaultValue={item.stock_actual ?? stockProducto}
+                                  className="stock-input"
+                                  onBlur={e => {
+                                    const nuevoStock = e.target.value;
+                                    if (nuevoStock !== String(item.stock_actual ?? stockProducto)) {
+                                      actualizarInsumoInventario(item.id_producto, nuevoStock, item.stock_minimo ?? stockMinimoProducto, 'producto');
+                                    }
+                                  }}
+                                />
+                              ) : <span>{stockProducto}</span>}
+                            </td>
+                            <td>
+                              {esAdministrador ? (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="1"
+                                  defaultValue={item.stock_minimo ?? stockMinimoProducto}
+                                  className="stock-input"
+                                  onBlur={e => {
+                                    const nuevoMin = e.target.value;
+                                    if (nuevoMin !== String(item.stock_minimo ?? stockMinimoProducto)) {
+                                      actualizarInsumoInventario(item.id_producto, item.stock_actual ?? stockProducto, nuevoMin, 'producto');
+                                    }
+                                  }}
+                                />
+                              ) : <span>{stockMinimoProducto}</span>}
+                            </td>
                           </>
                         )}
 
@@ -1257,7 +1294,7 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                           <small className="muted-note">
                             {tipoInventario === 'insumos'
                               ? (esAdministrador ? 'Edición habilitada' : 'Solo lectura')
-                              : 'Solo lectura'}
+                              : (esAdministrador ? 'Edición habilitada' : 'Solo lectura')}
                           </small>
                         </td>
                       </tr>
@@ -1629,28 +1666,8 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
 
       {/* MODAL PERSONALIZAR PRODUCTO */}
       {productoPersonalizando && (() => {
-        const nombreLower = (productoPersonalizando.nombre || '').toLowerCase();
-        const categoriaLower = (productoPersonalizando.categoria || '').toLowerCase();
-        
-        const categoriasBebidas = ['café', 'cafe', 'bebida', 'frappé', 'frappe', 'té', 'te', 'infusion', 'infusiones', 'otras bebidas'];
-        const esCategoriaBebida = categoriasBebidas.some(cat => categoriaLower.includes(cat));
-
-        const palabrasBebida = [
-          'latte', 'espresso', 'moka', 'mocha', 'americano', 'cold brew', 'iced', 
-          'frappé', 'frappe', 'cappuccino', 'capuchino', 'chai', 'matcha', 
-          'chocolate', 'limonada', 'soda', 'té', 'te', 'café', 'cafe', 'macchiato'
-        ];
-        const esNombreBebida = palabrasBebida.some(p => nombreLower.includes(p));
-        const esAguaSimple = nombreLower.includes('agua natural') || nombreLower.includes('agua mineral');
-
-        const esBebida = (esCategoriaBebida || esNombreBebida) && !esAguaSimple;
-        const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanada') || nombreLower.includes('pay') || nombreLower.includes('cheesecake');
-  
-
-
-        // Busca cualquier categoría que contenga la palabra "extra" sin importar mayúsculas
-const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().includes('extra'));
-        const listaExtras = categoriaExtras ? categoriaExtras.productos : [];
+        const tamanosProducto = Array.isArray(productoPersonalizando.tamanos) ? productoPersonalizando.tamanos : [];
+        const listaExtras = Array.isArray(productoPersonalizando.extras) ? productoPersonalizando.extras : [];
         const toggleExtra = (extra) => {
           setExtrasSeleccionados(prev => {
             const existe = prev.find(e => e.id_producto === extra.id_producto);
@@ -1670,18 +1687,12 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
                 <button type="button" className="modal-close" onClick={() => setProductoPersonalizando(null)}>×</button>
               </div>
 
-              {esBebida && !esPastel && (
-                <>
-                  {/* SE ELIMINÓ EL SELECT DE SABORES. SOLO QUEDAN LOS TAMAÑOS */}
-                  <div className="modal-section">
+              {tamanosProducto.length > 0 && (
+                <div className="modal-section">
                     <label className="modal-label">Tamaño</label>
                     <div className="option-list">
-                      {[
-                        { nombre: 'Chico (12 oz)', precio: Number(productoPersonalizando.precio) },
-                        { nombre: 'Mediano (16 oz)', precio: Number(productoPersonalizando.precio) + 10 },
-                        { nombre: 'Grande (20 oz)', precio: Number(productoPersonalizando.precio) + 15 }
-                      ].map((tam, idx) => {
-                        const seleccionado = tamanioSeleccionado?.nombre === tam.nombre;
+                      {tamanosProducto.map((tam, idx) => {
+                        const seleccionado = (tamanioSeleccionado?.id_tamano ?? tamanioSeleccionado?.id) === (tam.id_tamano ?? tam.id);
                         return (
                           <button
                             key={idx}
@@ -1690,14 +1701,15 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
                             className={`option-card${seleccionado ? ' selected' : ''}`}
                           >
                             <span className="option-name">{tam.nombre}</span>
-                            <span className="option-price">${tam.precio.toFixed(2)}</span>
+                            <span className="option-price">${Number(tam.precio != null ? tam.precio : Number(productoPersonalizando.precio || 0) + Number(tam.modificador_precio || 0)).toFixed(2)}</span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
+              )}
 
-                 {/* NUEVA SECCIÓN DE EXTRAS Y COMPLEMENTOS OCULTABLE */}
+                 {/* EXTRAS CONFIGURADOS PARA ESTE PRODUCTO */}
                   {listaExtras.length > 0 && (
                     <div className="extras-block">
                       
@@ -1739,24 +1751,6 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
                       )}
                     </div>
                   )}
-                </>
-              )}
-
-              {esPastel && (
-                <div className="modal-section">
-                  <label className="modal-label">Sabor de rebanada</label>
-                  <select
-                    value={saborSeleccionado}
-                    onChange={(e) => setSaborSeleccionado(e.target.value)}
-                    className="field-select"
-                  >
-                    <option value="Chocolate">Chocolate</option>
-                    <option value="Zanahoria">Zanahoria</option>
-                    <option value="Tres Leches">Tres Leches</option>
-                    <option value="Queso con Zarzamora">Queso con Zarzamora</option>
-                  </select>
-                </div>
-              )}
 
               <div className="modal-actions" style={{ marginTop: '20px' }}>
                 <button type="button" className="modal-secondary" onClick={() => setProductoPersonalizando(null)}>Cancelar</button>
@@ -1965,3 +1959,9 @@ const categoriaExtras = menu.find(cat => (cat.categoria || '').toLowerCase().inc
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
+
+
+
+
+
+

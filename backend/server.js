@@ -74,14 +74,7 @@ app.get('/api/menu', async (req, res) => {
                 p.precio,
                 c.nombre AS categoria,
                 CASE
-                    -- Productos comprados ya terminados: IDs usados también en el descuento directo de inventario.
-                    WHEN p.id_producto >= 50 OR p.id_producto = 3 THEN
-                        COALESCE((
-                            SELECT FLOOR(i.stock)
-                            FROM public.insumo i
-                            WHERE i.id_insumo = p.id_producto
-                        ), 0)
-                    -- Productos preparados con receta: limita la cantidad por el ingrediente más escaso.
+                    WHEN p.control_stock = 'directo' THEN COALESCE(FLOOR(p.stock_actual), 0)
                     ELSE COALESCE((
                         SELECT MIN(FLOOR(i.stock / NULLIF(r.cantidad_usada, 0)))
                         FROM public.receta r
@@ -89,7 +82,8 @@ app.get('/api/menu', async (req, res) => {
                         WHERE r.id_producto = p.id_producto
                     ), 0)
                 END AS stock,
-                COALESCE(p.stock_minimo, 5) AS stock_minimo
+                COALESCE(p.stock_minimo, 5) AS stock_minimo,
+                p.control_stock
             FROM public.productos p
             JOIN public.categorias c ON p.id_categoria = c.id_categoria
             WHERE p.estado = true
@@ -97,6 +91,55 @@ app.get('/api/menu', async (req, res) => {
         `;
 
         const result = await pool.query(query);
+        // Configuración individual de tamaños y extras por producto.
+        // Las tablas se crean con el archivo SQL de esta entrega.
+        const [tamanosRes, extrasRes] = await Promise.all([
+            pool.query(`
+                SELECT pt.id_producto, t.id_tamano, t.nombre, t.modificador_precio,
+                       pt.factor_ingredientes, t.id_insumo_vaso
+                FROM public.producto_tamano pt
+                JOIN public.tamano t ON t.id_tamano = pt.id_tamano
+                ORDER BY t.id_tamano
+            `),
+            pool.query(`
+                SELECT pe.id_producto, pe.id_extra, p.nombre,
+                       COALESCE(pe.precio_adicional, p.precio, 0) AS precio,
+                       CASE
+                           WHEN p.control_stock = 'directo' THEN COALESCE(FLOOR(p.stock_actual), 0)
+                           ELSE COALESCE((
+                               SELECT MIN(FLOOR(i.stock / NULLIF(r.cantidad_usada, 0)))
+                               FROM public.receta r
+                               JOIN public.insumo i ON i.id_insumo = r.id_insumo
+                               WHERE r.id_producto = p.id_producto
+                           ), 0)
+                       END AS stock,
+                       COALESCE(p.stock_minimo, 5) AS stock_minimo,
+                       p.control_stock
+                FROM public.producto_extra pe
+                JOIN public.productos p ON p.id_producto = pe.id_extra
+                WHERE p.estado = true
+                ORDER BY p.nombre
+            `)
+        ]);
+        const tamanosPorProducto = new Map();
+        for (const t of tamanosRes.rows) {
+            if (!tamanosPorProducto.has(Number(t.id_producto))) tamanosPorProducto.set(Number(t.id_producto), []);
+            tamanosPorProducto.get(Number(t.id_producto)).push({
+                id_tamano: Number(t.id_tamano), nombre: t.nombre,
+                modificador_precio: Number(t.modificador_precio || 0),
+                factor_ingredientes: Number(t.factor_ingredientes || 1),
+                id_insumo_vaso: t.id_insumo_vaso == null ? null : Number(t.id_insumo_vaso)
+            });
+        }
+        const extrasPorProducto = new Map();
+        for (const e of extrasRes.rows) {
+            if (!extrasPorProducto.has(Number(e.id_producto))) extrasPorProducto.set(Number(e.id_producto), []);
+            extrasPorProducto.get(Number(e.id_producto)).push({
+                id_producto: Number(e.id_extra), nombre: e.nombre, precio: Number(e.precio || 0),
+                stock: Number(e.stock || 0), stock_minimo: Number(e.stock_minimo ?? 5),
+                control_stock: e.control_stock
+            });
+        }
         const categoriasMap = {};
 
         result.rows.forEach(row => {
@@ -112,7 +155,10 @@ app.get('/api/menu', async (req, res) => {
                 nombre: row.nombre,
                 precio: parseFloat(row.precio),
                 stock: Number(row.stock || 0),
-                stock_minimo: Number(row.stock_minimo ?? 5)
+                stock_minimo: Number(row.stock_minimo ?? 5),
+                control_stock: row.control_stock,
+                tamanos: tamanosPorProducto.get(Number(row.id_producto)) || [],
+                extras: extrasPorProducto.get(Number(row.id_producto)) || []
             });
         });
 
@@ -129,27 +175,55 @@ app.get('/api/menu', async (req, res) => {
 app.get('/api/inventario', async (req, res) => {
     try {
         const query = `
-            SELECT 
-                i.id_insumo AS id_producto,
-                i.nombre AS producto,
-                COALESCE(ci.nombre, 'General') AS categoria,
-                i.stock AS stock_actual,
-                i.min_stock AS stock_minimo,
-                i.unidad,
-                CASE 
-                    WHEN i.stock > i.min_stock THEN 'Disponible'
-                    WHEN i.stock > 0 THEN 'Stock bajo'
-                    ELSE 'Agotado'
-                END AS estado
+            SELECT i.id_insumo AS id_producto, i.nombre AS producto,
+                   COALESCE(ci.nombre, 'General') AS categoria,
+                   i.stock AS stock_actual, i.min_stock AS stock_minimo, i.unidad,
+                   CASE WHEN i.stock > i.min_stock THEN 'Disponible'
+                        WHEN i.stock > 0 THEN 'Stock bajo' ELSE 'Agotado' END AS estado,
+                   'insumo' AS tipo
             FROM public.insumo i
             LEFT JOIN public.categoria_insumo ci ON i.id_cat_insumo = ci.id_cat_insumo
-            ORDER BY i.id_insumo;
+            UNION ALL
+            SELECT p.id_producto, p.nombre AS producto,
+                   COALESCE(c.nombre, 'General') AS categoria,
+                   p.stock_actual AS stock_actual, p.stock_minimo AS stock_minimo,
+                   'piezas' AS unidad,
+                   CASE WHEN p.stock_actual > p.stock_minimo THEN 'Disponible'
+                        WHEN p.stock_actual > 0 THEN 'Stock bajo' ELSE 'Agotado' END AS estado,
+                   'producto' AS tipo
+            FROM public.productos p
+            LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
+            WHERE p.control_stock = 'directo'
+            ORDER BY tipo, id_producto;
         `;
         const result = await pool.query(query);
         res.json(result.rows);
     } catch (err) {
         console.error('Error al obtener el inventario:', err);
         res.status(500).json({ error: 'Error al obtener el inventario' });
+    }
+});
+
+app.put('/api/inventario/productos/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    const stock = Number(req.body.stock);
+    const minStock = Number(req.body.min_stock);
+    if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(stock) || stock < 0 ||
+        !Number.isFinite(minStock) || minStock < 0) {
+        return res.status(400).json({ error: 'Stock e identificador deben ser válidos y no negativos.' });
+    }
+    try {
+        const result = await pool.query(
+            `UPDATE public.productos SET stock_actual = $1, stock_minimo = $2
+             WHERE id_producto = $3 AND control_stock = 'directo'
+             RETURNING id_producto, nombre, stock_actual, stock_minimo`,
+            [stock, minStock, id]
+        );
+        if (!result.rowCount) return res.status(404).json({ error: 'Producto de inventario directo no encontrado.' });
+        res.json({ status: 'ok', producto: result.rows[0] });
+    } catch (err) {
+        console.error('Error al actualizar stock de producto:', err);
+        res.status(500).json({ error: 'Error al actualizar el stock del producto.' });
     }
 });
 
@@ -229,6 +303,7 @@ app.post('/api/ventas', async (req, res) => {
         // Se agrupa el consumo de todos los productos del carrito para detectar
         // también cuando varios productos necesitan el mismo insumo.
         const consumoPorInsumo = new Map();
+        const consumoPorProducto = new Map();
         const agregarConsumo = (idInsumo, cantidad) => {
             if (!idInsumo || !Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) return;
             const id = Number(idInsumo);
@@ -243,25 +318,41 @@ app.post('/api/ventas', async (req, res) => {
                 throw error;
             }
 
-            const esReposteriaDirecta = Number(item.id_producto) >= 50 || Number(item.id_producto) === 3;
-            if (esReposteriaDirecta) {
-                agregarConsumo(item.id_producto, cantidad);
+            const productoTipoRes = await client.query(
+                `SELECT control_stock FROM public.productos WHERE id_producto = $1 FOR UPDATE`,
+                [Number(item.id_producto)]
+            );
+            if (!productoTipoRes.rowCount) {
+                const error = new Error(`No se encontró el producto con ID ${item.id_producto}.`);
+                error.statusCode = 400; throw error;
+            }
+            if (productoTipoRes.rows[0].control_stock === 'directo') {
+                const idProducto = Number(item.id_producto);
+                consumoPorProducto.set(idProducto, (consumoPorProducto.get(idProducto) || 0) + cantidad);
                 continue;
             }
 
             let factorIngredientes = 1.0;
             let idInsumoEmpaque = null;
-            if (item.customization) {
-                if (item.customization.includes('Chico')) {
-                    factorIngredientes = 1.0;
-                    idInsumoEmpaque = 5;
-                } else if (item.customization.includes('Mediano')) {
-                    factorIngredientes = 1.35;
-                    idInsumoEmpaque = 6;
-                } else if (item.customization.includes('Grande')) {
-                    factorIngredientes = 1.7;
-                    idInsumoEmpaque = 7;
+            if (item.id_tamano != null && item.id_tamano !== '') {
+                const tamanoRes = await client.query(
+                    `SELECT pt.factor_ingredientes, t.id_insumo_vaso
+                     FROM public.producto_tamano pt
+                     JOIN public.tamano t ON t.id_tamano = pt.id_tamano
+                     WHERE pt.id_producto = $1 AND pt.id_tamano = $2`,
+                    [Number(item.id_producto), Number(item.id_tamano)]
+                );
+                if (!tamanoRes.rowCount) {
+                    const error = new Error(`El tamaño seleccionado no está permitido para el producto ${item.nombre || item.id_producto}.`);
+                    error.statusCode = 400; throw error;
                 }
+                factorIngredientes = Number(tamanoRes.rows[0].factor_ingredientes || 1);
+                idInsumoEmpaque = tamanoRes.rows[0].id_insumo_vaso == null ? null : Number(tamanoRes.rows[0].id_insumo_vaso);
+            } else if (item.customization) {
+                // Compatibilidad temporal con el frontend anterior.
+                if (item.customization.includes('Chico')) { factorIngredientes = 1.0; idInsumoEmpaque = 5; }
+                else if (item.customization.includes('Mediano')) { factorIngredientes = 1.35; idInsumoEmpaque = 6; }
+                else if (item.customization.includes('Grande')) { factorIngredientes = 1.7; idInsumoEmpaque = 7; }
             }
 
             const nombreItemLower = (item.nombre || '').toLowerCase();
@@ -273,8 +364,13 @@ app.post('/api/ventas', async (req, res) => {
 
             const recetas = await client.query(
                 `SELECT id_insumo, cantidad_usada FROM public.receta WHERE id_producto = $1`,
-                [item.id_producto]
+                [Number(item.id_producto)]
             );
+            if (recetas.rowCount === 0) {
+                const error = new Error(`El producto ${item.nombre || item.id_producto} está configurado por receta, pero no tiene ingredientes registrados. Completa su receta antes de venderlo.`);
+                error.statusCode = 409;
+                throw error;
+            }
             for (const receta of recetas.rows) {
                 agregarConsumo(receta.id_insumo, Number(receta.cantidad_usada) * cantidad * factorIngredientes);
             }
@@ -307,6 +403,19 @@ app.post('/api/ventas', async (req, res) => {
             }
         }
 
+        for (const [idProducto, requerido] of consumoPorProducto.entries()) {
+            const stockRes = await client.query(
+                `SELECT id_producto, nombre, stock_actual FROM public.productos WHERE id_producto = $1 FOR UPDATE`,
+                [idProducto]
+            );
+            if (!stockRes.rowCount || Number(stockRes.rows[0].stock_actual) < requerido) {
+                const nombre = stockRes.rows[0]?.nombre || `producto ${idProducto}`;
+                const disponible = stockRes.rowCount ? Number(stockRes.rows[0].stock_actual) : 0;
+                const error = new Error(`Stock insuficiente de "${nombre}". Disponible: ${disponible}; requerido: ${requerido}.`);
+                error.statusCode = 409; throw error;
+            }
+        }
+
         // 1. Insertar la venta principal
         const ventaRes = await client.query(
             `INSERT INTO public.ventas (total, metodo_pago, efectivo_recibido, cambio_entregado) 
@@ -318,20 +427,23 @@ app.post('/api/ventas', async (req, res) => {
         // 2. Registrar detalles e impactar inventarios con tamaños, empaques, tapas y repostería directa
         for (const item of detalles) {
             await client.query(
-                `INSERT INTO public.detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [id_venta, item.id_producto, item.cantidad, item.precio, item.cantidad * item.precio]
+                `INSERT INTO public.detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, id_tamano, subtotal)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [id_venta, item.id_producto, item.cantidad, item.precio, item.id_tamano ?? null, item.cantidad * item.precio]
             );
 
-            // Identificar si es repostería/pastel directo de proveedor (ej. ID 3 o IDs >= 50)
-            const esReposteriaDirecta = item.id_producto >= 50 || item.id_producto === 3;
+            // El tipo de inventario se determina por la configuración del producto,
+            // no por rangos o valores específicos de id_producto.
+            const tipoProductoRes = await client.query(
+                `SELECT control_stock FROM public.productos WHERE id_producto = $1`,
+                [Number(item.id_producto)]
+            );
+            const esProductoDirecto = tipoProductoRes.rows[0]?.control_stock === 'directo';
 
-            if (esReposteriaDirecta) {
-                // Descuento directo de producto terminado de proveedor
+            if (esProductoDirecto) {
                 await client.query(
-                    `UPDATE public.insumo 
-                     SET stock = stock - $1 
-                     WHERE id_insumo = $2`,
+                    `UPDATE public.productos SET stock_actual = stock_actual - $1
+                     WHERE id_producto = $2 AND control_stock = 'directo'`,
                     [item.cantidad, item.id_producto]
                 );
            } else {
@@ -353,17 +465,22 @@ app.post('/api/ventas', async (req, res) => {
                 // ID 8: Tapa Caliente | ID 9: Tapa Fría
                 const idInsumoTapa = esBebidaFria ? 9 : 8;
 
-                if (item.customization) {
-                    if (item.customization.includes('Chico')) {
-                        factorIngredientes = 1.0;
-                        idInsumoEmpaque = 5; // ID 5: Vasos Chicos (12 oz)
-                    } else if (item.customization.includes('Mediano')) {
-                        factorIngredientes = 1.35; // 35% más de ingredientes
-                        idInsumoEmpaque = 6; // ID 6: Vasos Medianos (16 oz)
-                    } else if (item.customization.includes('Grande')) {
-                        factorIngredientes = 1.7;  // 70% más de ingredientes
-                        idInsumoEmpaque = 7; // ID 7: Vasos Grandes (20 oz)
-                    }
+                if (item.id_tamano != null && item.id_tamano !== '') {
+                    const tamanoRes = await client.query(
+                        `SELECT pt.factor_ingredientes, t.id_insumo_vaso
+                         FROM public.producto_tamano pt
+                         JOIN public.tamano t ON t.id_tamano = pt.id_tamano
+                         WHERE pt.id_producto = $1 AND pt.id_tamano = $2`,
+                        [Number(item.id_producto), Number(item.id_tamano)]
+                    );
+                    if (!tamanoRes.rowCount) throw new Error(`El tamaño seleccionado no está permitido para el producto ${item.nombre || item.id_producto}.`);
+                    factorIngredientes = Number(tamanoRes.rows[0].factor_ingredientes || 1);
+                    idInsumoEmpaque = tamanoRes.rows[0].id_insumo_vaso == null ? null : Number(tamanoRes.rows[0].id_insumo_vaso);
+                } else if (item.customization) {
+                    // Compatibilidad temporal con el frontend anterior.
+                    if (item.customization.includes('Chico')) { factorIngredientes = 1.0; idInsumoEmpaque = 5; }
+                    else if (item.customization.includes('Mediano')) { factorIngredientes = 1.35; idInsumoEmpaque = 6; }
+                    else if (item.customization.includes('Grande')) { factorIngredientes = 1.7; idInsumoEmpaque = 7; }
                 }
 
                 const consumoTotalReceta = item.cantidad * factorIngredientes;
