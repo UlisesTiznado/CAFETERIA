@@ -98,6 +98,17 @@ function App() {
   const [extrasSeleccionados, setExtrasSeleccionados] = useState([]); 
   const [mostrarExtras, setMostrarExtras] = useState(false); 
 
+  // Estados para el módulo de Empleados
+  const [empleados, setEmpleados] = useState([]);
+  const [cargandoEmpleados, setCargandoEmpleados] = useState(false);
+  const [busquedaEmpleado, setBusquedaEmpleado] = useState('');
+  const [modalEmpleadoAbierto, setModalEmpleadoAbierto] = useState(false);
+  const [modalCrearUsuarioAbierto, setModalCrearUsuarioAbierto] = useState(false);
+  const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
+
+  const [formEmpleado, setFormEmpleado] = useState({ nombre: '', telefono: '', id_rol: 1 });
+  const [formUsuario, setFormUsuario] = useState({ username: '', password: '' });
+
   const [errorVenta, setErrorVenta] = useState({
   visible: false,
   mensaje: ''
@@ -204,13 +215,13 @@ function App() {
       mensaje: 'Aquí podrás administrar las finanzas.',
       detalle: 'La gestión de contabilidad estará disponible próximamente.'
     },
-    empleados: {
+    /*empleados: {
       titulo: 'Empleados',
       descripcion: 'Administración del personal de la cafetería.',
       icono: '♙',
       mensaje: 'Aquí podrás administrar los empleados.',
       detalle: 'El registro y la consulta de empleados estarán disponibles próximamente.'
-    },
+    },*/
     reportes: {
       titulo: 'Reportes',
       descripcion: 'Resumen de ventas, inventario y actividad de la cafetería.',
@@ -420,7 +431,94 @@ localStorage.setItem('usuario', JSON.stringify(data.user));
     }
   };
 
+  /* ==================================================
+     CRUD EMPLEADOS
+  ================================================== */
+const cargarEmpleados = async () => {
+    setCargandoEmpleados(true);
+    try {
+        const response = await fetch('/api/empleados', { cache: 'no-store' });
+        const data = await response.json();
+        if (response.ok) {
+            setEmpleados(Array.isArray(data) ? data : []);
+        } else {
+            alert(data.error || 'Error al obtener la lista de empleados');
+        }
+    } catch (err) {
+        console.error('Error al cargar empleados:', err);
+    } finally {
+        setCargandoEmpleados(false);
+    }
+};
 
+useEffect(() => {
+    if (usuario && vistaActual === 'empleados') {
+        cargarEmpleados();
+    }
+}, [usuario, vistaActual]);
+
+const guardarEmpleado = async (e) => {
+    e.preventDefault();
+    if (!formEmpleado.nombre.trim()) return alert('Ingresa el nombre del empleado');
+    try {
+        const response = await fetch('/api/empleados', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formEmpleado)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'No se pudo crear el empleado');
+        
+        setModalEmpleadoAbierto(false);
+        setFormEmpleado({ nombre: '', telefono: '', id_rol: 1 });
+        await cargarEmpleados();
+    } catch (err) {
+        alert(err.message);
+    }
+};
+
+const guardarUsuarioEmpleado = async (e) => {
+    e.preventDefault();
+    if (!empleadoSeleccionado) return;
+    try {
+        const response = await fetch(`/api/empleados/${empleadoSeleccionado.id_empleado}/usuario`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formUsuario)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'No se pudo asignar el usuario');
+
+        setModalCrearUsuarioAbierto(false);
+        setFormUsuario({ username: '', password: '' });
+        await cargarEmpleados();
+        alert(`Acceso creado correctamente para @${data.usuario.username}`);
+    } catch (err) {
+        alert(err.message);
+    }
+};
+
+const cambiarEstadoEmpleado = async (emp) => {
+  const estadoActual = (emp.estado || 'Activo').trim();
+  const nuevoEstado = estadoActual === 'Activo' ? 'Inactivo' : 'Activo';
+  
+  if (!window.confirm(`¿Deseas cambiar el estado de "${emp.nombre}" a ${nuevoEstado}?`)) return;
+
+  try {
+    const response = await fetch(`/api/empleados/${emp.id_empleado}/estado`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estado: nuevoEstado })
+    });
+    
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
+    
+    await cargarEmpleados();
+  } catch (err) {
+    alert(err.message || 'Error al actualizar el estado');
+  }
+};
   /* ==================================================
      CARRITO Y PERSONALIZACIÓN
   ================================================== */
@@ -864,10 +962,14 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                     <button
                       type="button"
                       className="management-item"
-                      onClick={() => abrirSeccionGerencia('empleados')}
+                      onClick={() => {
+                        setVistaActual('empleados');
+                        setMenuGerenciaAbierto(false);
+                        cargarEmpleados();
+                      }}
                     >
                       <span>Empleados</span>
-                      <span className="management-status soon">vista previa</span>
+                      <span className="management-status active">activo</span>
                     </button>
                     <button
                       type="button"
@@ -1360,6 +1462,206 @@ const esPastel = nombreLower.includes('pastel') || nombreLower.includes('rebanad
                 </form>
               </section>
             </div>}
+          </main>
+        )}
+
+        {/* VISTA DE EMPLEADOS Y USUARIOS (NUEVA) */}
+          {vistaActual === 'empleados' && (
+            <main className="management-page">
+              <div className="management-page-header">
+                <div>
+                  <h2 className="title">Gestión de Empleados</h2>
+                  <div className="subtitle">Registro de personal y asignación de cuentas de acceso.</div>
+                </div>
+                <button type="button" className="management-back-btn" onClick={() => setModalEmpleadoAbierto(true)}>
+                  + Nuevo empleado
+                </button>
+              </div>
+
+              <section className="management-placeholder-panel">
+                <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 20 }}>
+                  <div>
+                    <strong>{empleados.length}</strong>
+                    <div className="subtitle">Empleados registrados</div>
+                  </div>
+                  <input
+                    type="search"
+                    placeholder="Buscar por nombre o usuario..."
+                    value={busquedaEmpleado}
+                    onChange={e => setBusquedaEmpleado(e.target.value)}
+                  />
+                </div>
+
+                <div className="inventory-table-wrapper">
+                  <table className="inventory-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Empleado</th>
+                        <th>Teléfono</th>
+                        <th>Rol</th>
+                        <th>Cuenta de Acceso</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cargandoEmpleados ? (
+                        <tr><td colSpan="7" className="table-empty">Cargando personal...</td></tr>
+                      ) : (() => {
+                        const filtrados = empleados.filter(e =>
+                          [e.nombre, e.username, e.rol, e.telefono, e.estado].some(v =>
+                            String(v || '').toLowerCase().includes(busquedaEmpleado.toLowerCase().trim())
+                          )
+                        );
+
+                        if (filtrados.length === 0) {
+                          return <tr><td colSpan="7" className="table-empty">No se encontraron empleados.</td></tr>;
+                        }
+
+                        return filtrados.map(emp => {
+                          const esActivo = (emp.estado || 'Activo').trim() === 'Activo';
+                          return (
+                            <tr key={emp.id_empleado}>
+                              <td><strong>#{emp.id_empleado}</strong></td>
+                              <td><strong>{emp.nombre}</strong></td>
+                              <td>{emp.telefono || '—'}</td>
+                              <td>{emp.rol}</td>
+                              <td>
+                                {emp.username ? (
+                                  <span className="pay-badge efectivo">@{emp.username}</span>
+                                ) : (
+                                  <span className="stock-status low">Sin usuario</span>
+                                )}
+                              </td>
+                              <td>
+                                <span className={`stock-status ${esActivo ? 'available' : 'out'}`}>
+                                  {esActivo ? 'Activo' : 'Inactivo'}
+                                </span>
+                              </td>
+
+                              <td>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                  {!emp.username && (
+                                    <button
+                                      type="button"
+                                      className="sales-detail-button"
+                                      onClick={() => {
+                                        setEmpleadoSeleccionado(emp);
+                                        setModalCrearUsuarioAbierto(true);
+                                      }}
+                                    >
+                                      Crear acceso
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn-outline"
+                                    onClick={() => cambiarEstadoEmpleado(emp)}
+                                  >
+                                    {esActivo ? 'Desactivar' : 'Activar'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* MODAL REGISTRAR EMPLEADO */}
+              {modalEmpleadoAbierto && (
+                <div className="modal-overlay">
+                  <div className="payment-modal">
+                    <div className="modal-header">
+                      <div>
+                        <h3>Nuevo Empleado</h3>
+                        <p>Ingresa la información básica del personal.</p>
+                      </div>
+                      <button type="button" className="modal-close" onClick={() => setModalEmpleadoAbierto(false)}>×</button>
+                    </div>
+                    <form onSubmit={guardarEmpleado}>
+                      <div className="cash-field">
+                        <label>Nombre completo *</label>
+                        <input
+                          type="text"
+                          required
+                          maxLength="150"
+                          value={formEmpleado.nombre}
+                          onChange={e => setFormEmpleado({ ...formEmpleado, nombre: e.target.value })}
+                        />
+                      </div>
+                      <div className="cash-field">
+                        <label>Teléfono</label>
+                        <input
+                          type="text"
+                          maxLength="40"
+                          value={formEmpleado.telefono}
+                          onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value })}
+                        />
+                      </div>
+                      <div className="modal-section">
+                        <label className="modal-label">Rol del sistema</label>
+                        <select
+                          className="field-select"
+                          value={formEmpleado.id_rol}
+                          onChange={e => setFormEmpleado({ ...formEmpleado, id_rol: Number(e.target.value) })}
+                        >
+                          <option value={1}>Empleado (Punto de Venta e Inventario)</option>
+                          <option value={2}>Administrador (Acceso completo)</option>
+                        </select>
+                      </div>
+                      <div className="modal-actions">
+                        <button type="button" className="modal-secondary" onClick={() => setModalEmpleadoAbierto(false)}>Cancelar</button>
+                        <button type="submit" className="modal-primary">Guardar empleado</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+            )}
+
+            {/* MODAL CREAR USUARIO Y CONTRASEÑA */}
+            {modalCrearUsuarioAbierto && (
+              <div className="modal-overlay">
+                <div className="payment-modal">
+                  <div className="modal-header">
+                    <div>
+                      <h3>Crear acceso de usuario</h3>
+                      <p>Asigna credenciales para {empleadoSeleccionado?.nombre}.</p>
+                    </div>
+                    <button type="button" className="modal-close" onClick={() => setModalCrearUsuarioAbierto(false)}>×</button>
+                  </div>
+                  <form onSubmit={guardarUsuarioEmpleado}>
+                    <div className="cash-field">
+                      <label>Usuario (Username) *</label>
+                      <input
+                        type="text"
+                        required
+                        maxLength="50"
+                        value={formUsuario.username}
+                        onChange={e => setFormUsuario({ ...formUsuario, username: e.target.value })}
+                      />
+                    </div>
+                    <div className="cash-field">
+                      <label>Contraseña *</label>
+                      <input
+                        type="password"
+                        required
+                        value={formUsuario.password}
+                        onChange={e => setFormUsuario({ ...formUsuario, password: e.target.value })}
+                      />
+                    </div>
+                    <div className="modal-actions">
+                      <button type="button" className="modal-secondary" onClick={() => setModalCrearUsuarioAbierto(false)}>Cancelar</button>
+                      <button type="submit" className="modal-primary">Crear usuario</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </main>
         )}
 
