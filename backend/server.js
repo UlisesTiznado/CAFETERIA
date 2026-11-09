@@ -15,9 +15,13 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // ==========================================
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ success: false, message: 'Ingresa usuario y contraseña' });
+  }
+
   try {
-    const result = await pool.query(
-      `
+    const query = `
       SELECT
         u.id_usuario,
         u.username,
@@ -26,14 +30,15 @@ app.post('/api/login', async (req, res) => {
         e.estado,
         r.id_rol,
         r.nombre AS rol
-      FROM usuarios u
-      LEFT JOIN empleado e ON e.id_empleado = u.id_empleado
-      LEFT JOIN rol r ON r.id_rol = e.id_rol
+      FROM public.usuarios u
+      INNER JOIN public.empleado e ON e.id_empleado = u.id_empleado
+      LEFT JOIN public.rol r ON r.id_rol = e.id_rol
       WHERE u.username = $1 AND u.password = $2
-      `,
-      [username, password]
-    );
+    `;
 
+    const result = await pool.query(query, [username, password]);
+
+    // 1. Validar si el usuario y contraseña existen
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
@@ -42,6 +47,16 @@ app.post('/api/login', async (req, res) => {
     }
 
     const usuario = result.rows[0];
+
+    // 2. Validar que el empleado esté en estado ACTIVO
+    if (usuario.estado && usuario.estado.toLowerCase() !== 'activo') {
+      return res.status(403).json({
+        success: false,
+        message: 'Acceso denegado: Tu cuenta de empleado se encuentra Inactiva. Contacta al administrador.'
+      });
+    }
+
+    // 3. Login exitoso
     return res.json({
       success: true,
       user: {
@@ -53,11 +68,12 @@ app.post('/api/login', async (req, res) => {
         rol: usuario.rol
       }
     });
+
   } catch (error) {
-    console.error(error);
+    console.error('Error durante el inicio de sesión:', error);
     return res.status(500).json({
       success: false,
-      message: 'Error interno del servidor'
+      message: 'Error interno del servidor al verificar credenciales'
     });
   }
 });
@@ -691,6 +707,124 @@ app.put('/api/proveedores/:id/insumos', async (req, res) => {
     } finally {
         client.release();
     }
+});
+
+// ==========================================
+// CRUD DE EMPLEADOS Y USUARIOS (GERENCIA)
+// ==========================================
+
+// Obtener lista de empleados con su rol y usuario asociado
+app.get('/api/empleados', async (req, res) => {
+    try {
+        const query = `
+            SELECT 
+                e.id_empleado,
+                e.nombre,
+                e.telefono,
+                e.estado,
+                COALESCE(r.id_rol, 1) AS id_rol,
+                COALESCE(r.nombre, 'Empleado') AS rol,
+                u.id_usuario,
+                u.username
+            FROM public.empleado e
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+            LEFT JOIN public.usuarios u ON u.id_empleado = e.id_empleado
+            ORDER BY e.id_empleado DESC;
+        `;
+        const result = await pool.query(query);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al obtener empleados:', err);
+        res.status(500).json({ error: 'Error al obtener empleados' });
+    }
+});
+
+// Registrar un nuevo empleado
+app.post('/api/empleados', async (req, res) => {
+    const { nombre, telefono, id_rol } = req.body;
+    const nombreLimpio = String(nombre || '').trim();
+    
+    if (!nombreLimpio) {
+        return res.status(400).json({ error: 'El nombre del empleado es obligatorio' });
+    }
+
+    try {
+        const result = await pool.query(
+            `INSERT INTO public.empleado (nombre, telefono, id_rol, estado)
+             VALUES ($1, $2, $3, 'Activo')
+             RETURNING id_empleado, nombre, telefono, id_rol, estado`,
+            [nombreLimpio, telefono ? String(telefono).trim() : null, id_rol || 1]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al registrar empleado:', err);
+        res.status(500).json({ error: 'Error al registrar el empleado' });
+    }
+});
+
+// Crear usuario y contraseña para un empleado existente
+app.post('/api/empleados/:id/usuario', async (req, res) => {
+    const id_empleado = Number(req.params.id);
+    const username = String(req.body.username || '').trim();
+    const password = String(req.body.password || '').trim();
+
+    if (!Number.isInteger(id_empleado) || id_empleado <= 0) {
+        return res.status(400).json({ error: 'ID de empleado no válido' });
+    }
+    if (!username || !password) {
+        return res.status(400).json({ error: 'El usuario y la contraseña son obligatorios' });
+    }
+
+    try {
+        const existe = await pool.query(
+            'SELECT id_usuario FROM public.usuarios WHERE username = $1',
+            [username]
+        );
+        if (existe.rows.length > 0) {
+            return res.status(400).json({ error: 'El nombre de usuario ya está registrado' });
+        }
+
+        const result = await pool.query(
+            `INSERT INTO public.usuarios (username, password, id_empleado)
+             VALUES ($1, $2, $3)
+             RETURNING id_usuario, username, id_empleado`,
+            [username, password, id_empleado]
+        );
+
+        res.status(201).json({ success: true, usuario: result.rows[0] });
+    } catch (err) {
+        console.error('Error al crear usuario:', err);
+        res.status(500).json({ error: 'Error al crear el acceso de usuario' });
+    }
+});
+
+app.patch('/api/empleados/:id/estado', async (req, res) => {
+  const id_empleado = Number(req.params.id);
+  const { estado } = req.body;
+
+  if (!Number.isInteger(id_empleado) || id_empleado <= 0) {
+    return res.status(400).json({ error: 'ID de empleado no válido' });
+  }
+
+  if (!['Activo', 'Inactivo'].includes(estado)) {
+    return res.status(400).json({ error: 'Estado no válido' });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE public.empleado SET estado = $1 WHERE id_empleado = $2 RETURNING *`,
+      [estado, id_empleado]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
+
+    res.json({ success: true, empleado: result.rows[0] });
+  } catch (err) {
+    console.error('Error al cambiar el estado del empleado:', err);
+    res.status(500).json({ error: 'Error al cambiar el estado' });
+  }
 });
 
 // Ruta principal SPA
