@@ -115,6 +115,7 @@ app.get('/api/menu', async (req, res) => {
                        pt.factor_ingredientes, t.id_insumo_vaso
                 FROM public.producto_tamano pt
                 JOIN public.tamano t ON t.id_tamano = pt.id_tamano
+                WHERE t.nombre ILIKE '%oz%'
                 ORDER BY t.id_tamano
             `),
             pool.query(`
@@ -221,54 +222,17 @@ app.get('/api/inventario', async (req, res) => {
 });
 
 app.put('/api/inventario/productos/:id', async (req, res) => {
-    const id = Number(req.params.id);
-    const stock = Number(req.body.stock);
-    const minStock = Number(req.body.min_stock);
-    if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(stock) || stock < 0 ||
-        !Number.isFinite(minStock) || minStock < 0) {
-        return res.status(400).json({ error: 'Stock e identificador deben ser válidos y no negativos.' });
-    }
-    try {
-        const result = await pool.query(
-            `UPDATE public.productos SET stock_actual = $1, stock_minimo = $2
-             WHERE id_producto = $3 AND control_stock = 'directo'
-             RETURNING id_producto, nombre, stock_actual, stock_minimo`,
-            [stock, minStock, id]
-        );
-        if (!result.rowCount) return res.status(404).json({ error: 'Producto de inventario directo no encontrado.' });
-        res.json({ status: 'ok', producto: result.rows[0] });
-    } catch (err) {
-        console.error('Error al actualizar stock de producto:', err);
-        res.status(500).json({ error: 'Error al actualizar el stock del producto.' });
-    }
+    return res.status(403).json({ error: 'El stock de productos se actualiza mediante compras recibidas a proveedores.' });
+
 });
 
 app.put('/api/inventario/:id', async (req, res) => {
-    const { id } = req.params;
-    const { stock, min_stock, nombre } = req.body;
-    try {
-        const query = `
-            UPDATE public.insumo 
-            SET stock = COALESCE($1, stock), 
-                min_stock = COALESCE($2, min_stock),
-                nombre = COALESCE($3, nombre)
-            WHERE id_insumo = $4
-            RETURNING *;
-        `;
-        const result = await pool.query(query, [stock, min_stock, nombre, id]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Insumo no encontrado' });
-        }
-        res.json({ status: 'ok', insumo: result.rows[0] });
-    } catch (err) {
-        console.error('Error al actualizar el inventario:', err);
-        res.status(500).json({ error: 'Error al actualizar el inventario' });
-    }
+    return res.status(403).json({
+        error: 'La existencia y el stock mínimo de los insumos se consultan aquí y se actualizan mediante compras a proveedores.'
+    });
 });
 
-// ==========================================
-// OBTENER HISTORIAL DE VENTAS (GERENCIA)
-// ==========================================
+
 app.get('/api/ventas', async (req, res) => {
     try {
         const queryVentas = `
@@ -541,7 +505,345 @@ app.post('/api/ventas', async (req, res) => {
     }
 });
 
+
 // ==========================================
+// COMPRAS A PROVEEDORES
+// La recepción actualiza inventario y genera un egreso contable
+// dentro de una sola transacción PostgreSQL.
+// ==========================================
+app.get('/api/catalogo-compras', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT 'insumo'::text AS tipo, i.id_insumo AS id_articulo,
+                   i.nombre, i.unidad, COALESCE(ci.nombre, 'General') AS categoria,
+                   COALESCE((SELECT MIN(pi.precio_compra) FROM public.proveedor_insumo pi WHERE pi.id_insumo = i.id_insumo), 0)::numeric AS precio_sugerido
+            FROM public.insumo i
+            LEFT JOIN public.categoria_insumo ci ON i.id_cat_insumo = ci.id_cat_insumo
+            UNION ALL
+            SELECT 'producto'::text AS tipo, p.id_producto AS id_articulo,
+                   p.nombre, 'piezas'::text AS unidad, COALESCE(c.nombre, 'General') AS categoria, 0::numeric AS precio_sugerido
+            FROM public.productos p
+            LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
+            WHERE LOWER(COALESCE(p.control_stock, '')) = 'directo'
+              AND p.estado = true
+            ORDER BY tipo, nombre;
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al cargar catálogo de compras:', err);
+        res.status(500).json({ error: 'No se pudo cargar el catálogo de compras.' });
+    }
+});
+
+app.get('/api/compras', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT c.id_compra, c.fecha_compra, c.total, c.metodo_pago, c.estado,
+                   p.nombre AS proveedor, COUNT(d.id_detalle_compra)::int AS articulos
+            FROM public.compra_proveedor c
+            JOIN public.proveedor p ON p.id_proveedor = c.id_proveedor
+            LEFT JOIN public.detalle_compra_proveedor d ON d.id_compra = c.id_compra
+            GROUP BY c.id_compra, p.nombre
+            ORDER BY c.id_compra DESC
+            LIMIT 100;
+        `);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error al consultar compras:', err);
+        res.status(500).json({ error: 'No se pudo consultar el historial de compras.' });
+    }
+});
+
+app.post('/api/compras', async (req, res) => {
+    const idProveedor = Number(req.body.id_proveedor);
+    const fechaCompra = req.body.fecha_compra || new Date().toISOString().slice(0, 10);
+    const metodoPago = String(req.body.metodo_pago || 'Efectivo').trim();
+    const observaciones = String(req.body.observaciones || '').trim() || null;
+    const items = req.body.items;
+
+    if (!Number.isInteger(idProveedor) || idProveedor <= 0 || !Array.isArray(items) || !items.length) {
+        return res.status(400).json({ error: 'Selecciona un proveedor y agrega artículos a la compra.' });
+    }
+    const fechaTexto = String(fechaCompra).trim();
+    const partesFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaTexto);
+    const fechaValida = partesFecha && (() => {
+        const anio = Number(partesFecha[1]);
+        const mes = Number(partesFecha[2]);
+        const dia = Number(partesFecha[3]);
+        const fecha = new Date(Date.UTC(anio, mes - 1, dia));
+        return fecha.getUTCFullYear() === anio &&
+               fecha.getUTCMonth() === mes - 1 &&
+               fecha.getUTCDate() === dia;
+    })();
+    if (!fechaValida) {
+        return res.status(400).json({ error: 'La fecha de compra no es válida. Selecciona una fecha válida en el calendario.' });
+    }
+    const hoyLocal = new Date();
+    const fechaHoyLocal = `${hoyLocal.getFullYear()}-${String(hoyLocal.getMonth() + 1).padStart(2, '0')}-${String(hoyLocal.getDate()).padStart(2, '0')}`;
+    if (fechaTexto > fechaHoyLocal) {
+        return res.status(400).json({ error: 'La fecha de compra no puede ser posterior al día de hoy.' });
+    }
+    const permitidos = new Set(['Efectivo', 'Tarjeta', 'Transferencia', 'Crédito']);
+    if (!permitidos.has(metodoPago)) return res.status(400).json({ error: 'Método de pago no válido.' });
+
+    const ids = new Set();
+    for (const item of items) {
+        const tipo = String(item.tipo || '');
+        const id = Number(item.id_articulo);
+        const cantidad = Number(item.cantidad);
+        const precio = Number(item.precio_unitario);
+        if (!['insumo', 'producto'].includes(tipo) || !Number.isInteger(id) || id <= 0 ||
+            !Number.isInteger(cantidad) || cantidad <= 0 || !Number.isFinite(precio) || precio <= 0) {
+            return res.status(400).json({ error: 'Cada artículo debe tener cantidad mayor a cero y precio unitario mayor a cero.' });
+        }
+        const clave = `${tipo}:${id}`;
+        if (ids.has(clave)) return res.status(400).json({ error: 'No repitas el mismo artículo; modifica su cantidad.' });
+        ids.add(clave);
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const proveedor = await client.query(
+            `SELECT id_proveedor FROM public.proveedor WHERE id_proveedor = $1 AND COALESCE(estado,'Activo') = 'Activo' FOR UPDATE`,
+            [idProveedor]
+        );
+        if (!proveedor.rowCount) {
+            const e = new Error('El proveedor no existe o está inactivo.');
+            e.statusCode = 404; throw e;
+        }
+
+        let total = 0;
+        const articulosValidados = [];
+        for (const item of items) {
+            const cantidad = Number(item.cantidad);
+            const precio = Number(item.precio_unitario);
+            let articulo;
+            if (item.tipo === 'insumo') {
+                const r = await client.query(
+                    `SELECT id_insumo AS id, nombre, unidad FROM public.insumo WHERE id_insumo = $1 FOR UPDATE`,
+                    [Number(item.id_articulo)]
+                );
+                if (!r.rowCount) { const e = new Error('Uno de los insumos ya no existe.'); e.statusCode=400; throw e; }
+                articulo = r.rows[0];
+            } else {
+                const r = await client.query(
+                    `SELECT id_producto AS id, nombre, 'piezas'::text AS unidad FROM public.productos
+                     WHERE id_producto = $1 AND estado = true AND LOWER(COALESCE(control_stock,'')) = 'directo' FOR UPDATE`,
+                    [Number(item.id_articulo)]
+                );
+                if (!r.rowCount) { const e = new Error('El producto no existe o no utiliza control de stock directo.'); e.statusCode=400; throw e; }
+                articulo = r.rows[0];
+            }
+            const subtotal = Math.round(cantidad * precio * 100) / 100;
+            total += subtotal;
+            articulosValidados.push({ ...item, ...articulo, cantidad, precio, subtotal });
+        }
+        total = Math.round(total * 100) / 100;
+        if (total <= 0) { const e = new Error('El total de la compra debe ser mayor a cero.'); e.statusCode=400; throw e; }
+
+        const compraRes = await client.query(`
+            INSERT INTO public.compra_proveedor
+              (id_proveedor, fecha_compra, total, metodo_pago, observaciones, estado)
+            VALUES ($1,$2,$3,$4,$5,'Recibida')
+            RETURNING id_compra;
+        `, [idProveedor, fechaTexto, total, metodoPago, observaciones]);
+        const idCompra = compraRes.rows[0].id_compra;
+
+        for (const item of articulosValidados) {
+            await client.query(`
+                INSERT INTO public.detalle_compra_proveedor
+                  (id_compra, tipo_articulo, id_articulo, nombre_articulo, unidad, cantidad, precio_unitario, subtotal)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            `, [idCompra, item.tipo, item.id, item.nombre, item.tipo === 'insumo' && ['gramo','gramos','g','gr'].includes(String(item.unidad || '').trim().toLowerCase()) ? 'unidad de 1 kg' : item.tipo === 'insumo' && ['mililitro','mililitros','ml','cc'].includes(String(item.unidad || '').trim().toLowerCase()) ? 'unidad de 1 L' : item.unidad, item.cantidad, item.precio, item.subtotal]);
+
+            if (item.tipo === 'insumo') {
+                // Las compras se capturan en unidades enteras de presentación.
+                // Si el inventario está en gramos o mililitros, cada unidad comprada equivale a 1 kg o 1 L.
+                const unidadNormalizada = String(item.unidad || '').trim().toLowerCase();
+                const factorConversion = ['gramo', 'gramos', 'g', 'gr', 'mililitro', 'mililitros', 'ml', 'cc'].includes(unidadNormalizada) ? 1000 : 1;
+                const cantidadInventario = item.cantidad * factorConversion;
+                await client.query(
+                    `UPDATE public.insumo SET stock = stock + $1 WHERE id_insumo = $2`,
+                    [cantidadInventario, item.id]
+                );
+            } else {
+                await client.query(
+                    `UPDATE public.productos SET stock_actual = stock_actual + $1 WHERE id_producto = $2 AND control_stock = 'directo'`,
+                    [item.cantidad, item.id]
+                );
+            }
+        }
+
+        const gastoRes = await client.query(`
+            INSERT INTO public.gasto
+              (concepto, categoria, monto, fecha_gasto, metodo_pago, observaciones, id_compra)
+            VALUES ($1, 'Compras a proveedores', $2, $3, $4, $5, $6)
+            RETURNING id_gasto;
+        `, [`Compra a proveedor #${idCompra}`, total, fechaCompra, metodoPago, observaciones, idCompra]);
+
+        await client.query('COMMIT');
+        res.status(201).json({ success: true, id_compra: idCompra, id_gasto: gastoRes.rows[0].id_gasto, folio: `CP-${idCompra}`, total });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al registrar compra:', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'No se pudo registrar la compra.' });
+    } finally {
+        client.release();
+    }
+});
+
+// Resumen, egresos e historial detallado de compras para Contabilidad.
+app.get('/api/contabilidad', async (req, res) => {
+    try {
+        const [movimientosRes, resumenRes, comprasRes] = await Promise.all([
+            pool.query(`
+                SELECT id_gasto, concepto, categoria, monto, fecha_gasto,
+                       metodo_pago, observaciones, id_compra
+                FROM public.gasto
+                ORDER BY fecha_gasto DESC, id_gasto DESC;
+            `),
+            pool.query(`
+                SELECT COALESCE((SELECT SUM(total) FROM public.ventas),0)::numeric AS ingresos,
+                       COALESCE((SELECT SUM(monto) FROM public.gasto),0)::numeric AS egresos;
+            `),
+            pool.query(`
+                SELECT
+                    c.id_compra,
+                    c.fecha_compra,
+                    c.total,
+                    c.metodo_pago,
+                    c.estado,
+                    c.observaciones,
+                    p.nombre AS proveedor,
+                    COALESCE(
+                        json_agg(
+                            json_build_object(
+                                'id_detalle_compra', d.id_detalle_compra,
+                                'tipo_articulo', d.tipo_articulo,
+                                'nombre_articulo', d.nombre_articulo,
+                                'unidad', d.unidad,
+                                'cantidad', d.cantidad,
+                                'precio_unitario', d.precio_unitario,
+                                'subtotal', d.subtotal
+                            ) ORDER BY d.id_detalle_compra
+                        ) FILTER (WHERE d.id_detalle_compra IS NOT NULL),
+                        '[]'::json
+                    ) AS detalles
+                FROM public.compra_proveedor c
+                INNER JOIN public.proveedor p ON p.id_proveedor = c.id_proveedor
+                LEFT JOIN public.detalle_compra_proveedor d ON d.id_compra = c.id_compra
+                GROUP BY c.id_compra, p.nombre
+                ORDER BY c.fecha_compra DESC, c.id_compra DESC;
+            `)
+        ]);
+
+        res.json({
+            movimientos: movimientosRes.rows,
+            resumen: resumenRes.rows[0],
+            compras: comprasRes.rows
+        });
+    } catch (err) {
+        console.error('Error al cargar contabilidad:', err);
+        res.status(500).json({ error: 'No se pudo cargar la información contable.' });
+    }
+});
+
+// ==========================================
+// Gastos adicionales administrados desde Contabilidad.
+app.post('/api/contabilidad/gastos', async (req, res) => {
+    const concepto = String(req.body.concepto || '').trim();
+    const categoria = String(req.body.categoria || 'Otros').trim();
+    const monto = Number(req.body.monto);
+    const fecha = String(req.body.fecha_gasto || '').slice(0, 10);
+    const metodo = String(req.body.metodo_pago || 'Efectivo').trim();
+    const observaciones = String(req.body.observaciones || '').trim() || null;
+    if (!concepto || !Number.isFinite(monto) || monto <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(fecha))
+        return res.status(400).json({ error: 'Concepto, importe positivo y fecha válida son obligatorios.' });
+    try {
+        const result = await pool.query(`
+            INSERT INTO public.gasto (concepto, categoria, monto, fecha_gasto, metodo_pago, observaciones)
+            VALUES ($1,$2,$3,$4,$5,$6) RETURNING *;
+        `, [concepto, categoria, monto, fecha, metodo, observaciones]);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al registrar gasto extra:', err);
+        res.status(500).json({ error: 'No se pudo registrar el gasto adicional.' });
+    }
+});
+
+// Configuración de nóminas y registro explícito de pagos semanales.
+app.get('/api/nominas', async (req, res) => {
+    try {
+        const [nominas, pagos] = await Promise.all([
+            pool.query(`SELECT n.id_nomina, n.id_empleado, e.nombre, n.sueldo_mensual,
+                               ROUND((n.sueldo_mensual * 12 / 52)::numeric, 2) AS pago_semanal, n.activa
+                        FROM public.nomina n JOIN public.empleado e ON e.id_empleado=n.id_empleado
+                        WHERE n.activa=true ORDER BY e.nombre;`),
+            pool.query(`SELECT p.id_pago_nomina, p.id_nomina, n.id_empleado, e.nombre,
+                               p.semana_inicio, p.monto, p.fecha_pago, p.metodo_pago
+                        FROM public.nomina_pago p JOIN public.nomina n ON n.id_nomina=p.id_nomina
+                        JOIN public.empleado e ON e.id_empleado=n.id_empleado
+                        ORDER BY p.fecha_pago DESC, p.semana_inicio DESC, p.id_pago_nomina DESC;`)
+        ]);
+        res.json({ nominas: nominas.rows, pagos: pagos.rows });
+    } catch (err) {
+        console.error('Error al consultar nóminas:', err);
+        res.status(500).json({ error: 'No se pudieron consultar las nóminas. Verifica que ejecutaste la migración SQL.' });
+    }
+});
+
+app.post('/api/nominas', async (req, res) => {
+    const idEmpleado = Number(req.body.id_empleado);
+    const sueldo = Number(req.body.sueldo_mensual);
+    if (!Number.isInteger(idEmpleado) || idEmpleado <= 0 || !Number.isFinite(sueldo) || sueldo <= 0)
+        return res.status(400).json({ error: 'Selecciona un empleado y captura un sueldo mensual mayor a cero.' });
+    try {
+        const empleado = await pool.query(`SELECT id_empleado FROM public.empleado WHERE id_empleado=$1 AND LOWER(COALESCE(estado,'activo'))='activo'`, [idEmpleado]);
+        if (!empleado.rowCount) return res.status(404).json({ error: 'El empleado no existe o está inactivo.' });
+        const result = await pool.query(`INSERT INTO public.nomina (id_empleado,sueldo_mensual,activa)
+            VALUES ($1,$2,true) ON CONFLICT (id_empleado) DO UPDATE SET sueldo_mensual=EXCLUDED.sueldo_mensual, activa=true
+            RETURNING id_nomina,id_empleado,sueldo_mensual,ROUND((sueldo_mensual*12/52)::numeric,2) AS pago_semanal;`, [idEmpleado,sueldo]);
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error al configurar nómina:', err);
+        res.status(500).json({ error: 'No se pudo configurar la nómina.' });
+    }
+});
+
+app.post('/api/nominas/:id/pagos', async (req, res) => {
+    const idNomina = Number(req.params.id);
+    const semanaSolicitada = String(req.body.semana_inicio || '').slice(0,10);
+    const semana = /^\d{4}-\d{2}-\d{2}$/.test(semanaSolicitada)
+        ? (() => { const d = new Date(`${semanaSolicitada}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7)); return d.toISOString().slice(0,10); })()
+        : '';
+    const metodo = String(req.body.metodo_pago || 'Transferencia').trim();
+    if (!Number.isInteger(idNomina) || idNomina <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(semana))
+        return res.status(400).json({ error: 'Nómina o fecha de semana no válida.' });
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const n = await client.query(`SELECT n.id_nomina,n.id_empleado,e.nombre,
+                ROUND((n.sueldo_mensual*12/52)::numeric,2) AS pago_semanal
+            FROM public.nomina n JOIN public.empleado e ON e.id_empleado=n.id_empleado
+            WHERE n.id_nomina=$1 AND n.activa=true FOR UPDATE OF n`, [idNomina]);
+        if (!n.rowCount) { const er=new Error('No se encontró una nómina activa.'); er.statusCode=404; throw er; }
+        const monto = Number(n.rows[0].pago_semanal);
+        const gasto = await client.query(`INSERT INTO public.gasto (concepto,categoria,monto,fecha_gasto,metodo_pago,observaciones)
+            VALUES ($1,'Nómina',$2,CURRENT_DATE,$3,$4) RETURNING id_gasto`,
+            [`Pago semanal - ${n.rows[0].nombre}`,monto,metodo,`Semana iniciada el ${semana}`]);
+        const pago = await client.query(`INSERT INTO public.nomina_pago (id_nomina,semana_inicio,monto,id_gasto,metodo_pago)
+            VALUES ($1,$2,$3,$4,$5) RETURNING id_pago_nomina,semana_inicio,monto`, [idNomina,semana,monto,gasto.rows[0].id_gasto,metodo]);
+        await client.query('COMMIT');
+        res.status(201).json(pago.rows[0]);
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505') return res.status(409).json({ error: 'Ese pago ya fue registrado para el empleado en esa semana.' });
+        console.error('Error al registrar pago de nómina:', err);
+        res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'No se pudo registrar el pago semanal.' });
+    } finally { client.release(); }
+});
+
 // CRUD DE PROVEEDORES
 // Tabla existente: public.proveedor
 // ==========================================
@@ -709,9 +1011,41 @@ app.put('/api/proveedores/:id/insumos', async (req, res) => {
     }
 });
 
+// Elimina únicamente las credenciales de cuentas inactivas durante 6 meses.
+// Se conserva el registro del empleado para no romper el historial administrativo.
+const eliminarAccesosInactivosVencidos = async () => {
+    try {
+        const result = await pool.query(`
+            DELETE FROM public.usuarios u
+            USING public.empleado e
+            WHERE u.id_empleado = e.id_empleado
+              AND LOWER(COALESCE(e.estado, 'activo')) = 'inactivo'
+              AND e.fecha_inactivacion IS NOT NULL
+              AND e.fecha_inactivacion <= NOW() - INTERVAL '6 months'
+            RETURNING u.id_usuario, u.username, u.id_empleado
+        `);
+        if (result.rowCount > 0) {
+            console.log(`[Limpieza de empleados] Se eliminaron ${result.rowCount} cuenta(s) de acceso por inactividad de 6 meses.`);
+        }
+    } catch (err) {
+        // Si aún no se ha aplicado la migración SQL, el servidor sigue funcionando.
+        console.error('No se pudo ejecutar la limpieza de cuentas inactivas:', err.message);
+    }
+};
+
 // ==========================================
 // CRUD DE EMPLEADOS Y USUARIOS (GERENCIA)
 // ==========================================
+
+// Teléfono internacional: guarda el código de país y el número en formato +<lada><número>.
+// La lada es configurable; no se fuerza +52 ni una longitud nacional fija.
+const validarTelefonoEmpleado = (valor) => {
+    if (valor == null || String(valor).trim() === '') return { valido: true, telefono: null };
+    const original = String(valor).trim();
+    const digitos = original.replace(/\D/g, '');
+    const valido = /^\+?\d{5,18}$/.test(original.replace(/[\s().-]/g, ''));
+    return { valido, telefono: valido ? `+${digitos}` : null };
+};
 
 // Obtener lista de empleados con su rol y usuario asociado
 app.get('/api/empleados', async (req, res) => {
@@ -722,6 +1056,18 @@ app.get('/api/empleados', async (req, res) => {
                 e.nombre,
                 e.telefono,
                 e.estado,
+                e.fecha_inactivacion,
+                CASE
+                  WHEN LOWER(COALESCE(e.estado, 'activo')) = 'inactivo' AND e.fecha_inactivacion IS NOT NULL THEN
+                    CASE
+                      WHEN EXTRACT(YEAR FROM age(NOW(), e.fecha_inactivacion)) >= 1 THEN
+                        CONCAT(EXTRACT(YEAR FROM age(NOW(), e.fecha_inactivacion))::int, ' año(s), ', EXTRACT(MONTH FROM age(NOW(), e.fecha_inactivacion))::int, ' mes(es)')
+                      WHEN EXTRACT(MONTH FROM age(NOW(), e.fecha_inactivacion)) >= 1 THEN
+                        CONCAT(EXTRACT(MONTH FROM age(NOW(), e.fecha_inactivacion))::int, ' mes(es), ', EXTRACT(DAY FROM age(NOW(), e.fecha_inactivacion))::int, ' día(s)')
+                      ELSE CONCAT(GREATEST(EXTRACT(DAY FROM age(NOW(), e.fecha_inactivacion))::int, 0), ' día(s)')
+                    END
+                  ELSE NULL
+                END AS tiempo_inactivo,
                 COALESCE(r.id_rol, 1) AS id_rol,
                 COALESCE(r.nombre, 'Empleado') AS rol,
                 u.id_usuario,
@@ -747,18 +1093,112 @@ app.post('/api/empleados', async (req, res) => {
     if (!nombreLimpio) {
         return res.status(400).json({ error: 'El nombre del empleado es obligatorio' });
     }
+    const telefonoValidado = validarTelefonoEmpleado(telefono);
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir un código de país de 1 a 4 dígitos y un número válido (4 a 14 dígitos).' });
 
     try {
         const result = await pool.query(
             `INSERT INTO public.empleado (nombre, telefono, id_rol, estado)
              VALUES ($1, $2, $3, 'Activo')
              RETURNING id_empleado, nombre, telefono, id_rol, estado`,
-            [nombreLimpio, telefono ? String(telefono).trim() : null, id_rol || 1]
+            [nombreLimpio, telefonoValidado.telefono, id_rol || 1]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error('Error al registrar empleado:', err);
         res.status(500).json({ error: 'Error al registrar el empleado' });
+    }
+});
+
+// Actualizar datos del empleado y, opcionalmente, su contraseña de acceso.
+app.put('/api/empleados/:id', async (req, res) => {
+    const idEmpleado = Number(req.params.id);
+    const nombre = String(req.body.nombre || '').trim();
+    const telefonoRaw = req.body.telefono == null ? null : String(req.body.telefono).trim() || null;
+    const telefonoValidado = validarTelefonoEmpleado(telefonoRaw);
+    const telefono = telefonoValidado.telefono;
+    const idRol = Number(req.body.id_rol || 1);
+    const nuevaPassword = req.body.password == null ? '' : String(req.body.password);
+
+    if (!Number.isInteger(idEmpleado) || idEmpleado <= 0) {
+        return res.status(400).json({ error: 'ID de empleado no válido.' });
+    }
+    if (!nombre) return res.status(400).json({ error: 'El nombre del empleado es obligatorio.' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir un código de país de 1 a 4 dígitos y un número válido (4 a 14 dígitos).' });
+    if (!Number.isInteger(idRol) || idRol <= 0) return res.status(400).json({ error: 'Selecciona un rol válido.' });
+    if (nuevaPassword && nuevaPassword.length < 6) {
+        return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const actual = await client.query(
+            'SELECT id_empleado FROM public.empleado WHERE id_empleado = $1 FOR UPDATE',
+            [idEmpleado]
+        );
+        if (!actual.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Empleado no encontrado.' });
+        }
+
+        await client.query(
+            'UPDATE public.empleado SET nombre = $1, telefono = $2, id_rol = $3 WHERE id_empleado = $4',
+            [nombre, telefono, idRol, idEmpleado]
+        );
+
+        if (nuevaPassword) {
+            const usuario = await client.query(
+                'SELECT id_usuario FROM public.usuarios WHERE id_empleado = $1 FOR UPDATE',
+                [idEmpleado]
+            );
+            if (!usuario.rowCount) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Este empleado todavía no tiene una cuenta de acceso. Primero crea su usuario.' });
+            }
+            // Se conserva el formato de contraseña que utiliza actualmente el inicio de sesión del proyecto.
+            await client.query(
+                'UPDATE public.usuarios SET password = $1 WHERE id_empleado = $2',
+                [nuevaPassword, idEmpleado]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Empleado actualizado correctamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al actualizar empleado:', err);
+        res.status(500).json({ error: 'Error al actualizar el empleado.' });
+    } finally {
+        client.release();
+    }
+});
+
+// Eliminar empleado y sus credenciales. Si existen registros históricos relacionados
+// que impiden borrar al empleado, la transacción se revierte y se conserva todo.
+app.delete('/api/empleados/:id', async (req, res) => {
+    const idEmpleado = Number(req.params.id);
+    if (!Number.isInteger(idEmpleado) || idEmpleado <= 0) {
+        return res.status(400).json({ error: 'ID de empleado no válido.' });
+    }
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const existe = await client.query('SELECT id_empleado FROM public.empleado WHERE id_empleado = $1 FOR UPDATE', [idEmpleado]);
+        if (!existe.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Empleado no encontrado.' });
+        }
+        await client.query('DELETE FROM public.usuarios WHERE id_empleado = $1', [idEmpleado]);
+        await client.query('DELETE FROM public.empleado WHERE id_empleado = $1', [idEmpleado]);
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'Empleado y credenciales eliminados.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar empleado:', err);
+        res.status(409).json({ error: 'No se puede eliminar porque el empleado tiene registros relacionados (por ejemplo, nómina o movimientos). Se conservaron sus datos.' });
+    } finally {
+        client.release();
     }
 });
 
@@ -812,7 +1252,13 @@ app.patch('/api/empleados/:id/estado', async (req, res) => {
 
   try {
     const result = await pool.query(
-      `UPDATE public.empleado SET estado = $1 WHERE id_empleado = $2 RETURNING *`,
+      `UPDATE public.empleado
+       SET estado = $1,
+           fecha_inactivacion = CASE
+             WHEN $1 = 'Inactivo' THEN COALESCE(fecha_inactivacion, NOW())
+             ELSE NULL
+           END
+       WHERE id_empleado = $2 RETURNING *`,
       [estado, id_empleado]
     );
 
@@ -827,12 +1273,120 @@ app.patch('/api/empleados/:id/estado', async (req, res) => {
   }
 });
 
-// Ruta principal SPA
+// ==========================================
+// OBTENER PANEL DE REPORTES Y ESTADÍSTICAS (GERENCIA)
+// ==========================================
+app.get('/api/reportes', async (req, res) => {
+    try {
+        const { fechaInicio = '', fechaFin = '' } = req.query;
+        const formatoFechaValido = valor => !valor || /^\d{4}-\d{2}-\d{2}$/.test(String(valor));
+
+        if (!formatoFechaValido(fechaInicio) || !formatoFechaValido(fechaFin)) {
+            return res.status(400).json({ error: 'Formato de fecha no válido. Utiliza AAAA-MM-DD.' });
+        }
+        if (fechaInicio && Number.isNaN(Date.parse(`${fechaInicio}T00:00:00`))) {
+            return res.status(400).json({ error: 'La fecha inicial no es válida.' });
+        }
+        if (fechaFin && Number.isNaN(Date.parse(`${fechaFin}T00:00:00`))) {
+            return res.status(400).json({ error: 'La fecha final no es válida.' });
+        }
+        if (fechaInicio && fechaFin && fechaInicio > fechaFin) {
+            return res.status(400).json({ error: 'La fecha inicial no puede ser posterior a la fecha final.' });
+        }
+
+        const hoyResult = await pool.query("SELECT CURRENT_DATE::text AS hoy");
+        const hoy = hoyResult.rows[0].hoy;
+        if ((fechaInicio && fechaInicio > hoy) || (fechaFin && fechaFin > hoy)) {
+            return res.status(400).json({ error: 'No se permiten fechas futuras.' });
+        }
+
+        const parametros = [fechaInicio || null, fechaFin || null];
+
+        // 1. Resumen financiero del periodo solicitado.
+        const resumenQuery = `
+            SELECT
+                COALESCE(SUM(total), 0) AS total_ingresos,
+                COUNT(id_venta) AS total_ventas,
+                COALESCE(AVG(total), 0) AS ticket_promedio,
+                COALESCE(SUM(CASE WHEN lower(metodo_pago) = 'efectivo' THEN total ELSE 0 END), 0) AS ingresos_efectivo,
+                COALESCE(SUM(CASE WHEN lower(metodo_pago) = 'tarjeta' THEN total ELSE 0 END), 0) AS ingresos_tarjeta
+            FROM public.ventas
+            WHERE ($1::date IS NULL OR fecha_hora::date >= $1::date)
+              AND ($2::date IS NULL OR fecha_hora::date <= $2::date);
+        `;
+        const resumenRes = await pool.query(resumenQuery, parametros);
+
+        // 2. Top 5 productos vendidos dentro del mismo periodo.
+        const topProductosQuery = `
+            SELECT
+                p.nombre,
+                COALESCE(c.nombre, 'Sin categoría') AS categoria,
+                SUM(dv.cantidad) AS total_unidades,
+                SUM(dv.cantidad * dv.precio_unitario) AS total_recaudado
+            FROM public.detalle_ventas dv
+            JOIN public.ventas v ON v.id_venta = dv.id_venta
+            JOIN public.productos p ON dv.id_producto = p.id_producto
+            LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
+            WHERE ($1::date IS NULL OR v.fecha_hora::date >= $1::date)
+              AND ($2::date IS NULL OR v.fecha_hora::date <= $2::date)
+            GROUP BY p.id_producto, p.nombre, c.nombre
+            ORDER BY total_unidades DESC
+            LIMIT 5;
+        `;
+        const topProductosRes = await pool.query(topProductosQuery, parametros);
+
+        // 3. Ventas por categoría dentro del mismo periodo.
+        const porCategoriaQuery = `
+            SELECT
+                COALESCE(c.nombre, 'General') AS categoria,
+                SUM(dv.cantidad) AS unidades,
+                SUM(dv.cantidad * dv.precio_unitario) AS total
+            FROM public.detalle_ventas dv
+            JOIN public.ventas v ON v.id_venta = dv.id_venta
+            JOIN public.productos p ON dv.id_producto = p.id_producto
+            LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
+            WHERE ($1::date IS NULL OR v.fecha_hora::date >= $1::date)
+              AND ($2::date IS NULL OR v.fecha_hora::date <= $2::date)
+            GROUP BY c.id_categoria, c.nombre
+            ORDER BY total DESC;
+        `;
+        const porCategoriaRes = await pool.query(porCategoriaQuery, parametros);
+
+        const resumen = resumenRes.rows[0];
+        res.json({
+            resumen: {
+                total_ingresos: parseFloat(resumen.total_ingresos),
+                total_ventas: parseInt(resumen.total_ventas, 10),
+                ticket_promedio: parseFloat(resumen.ticket_promedio),
+                ingresos_efectivo: parseFloat(resumen.ingresos_efectivo),
+                ingresos_tarjeta: parseFloat(resumen.ingresos_tarjeta)
+            },
+            top_productos: topProductosRes.rows.map(r => ({
+                nombre: r.nombre,
+                categoria: r.categoria,
+                total_unidades: parseInt(r.total_unidades, 10),
+                total_recaudado: parseFloat(r.total_recaudado)
+            })),
+            ventas_categoria: porCategoriaRes.rows.map(r => ({
+                categoria: r.categoria,
+                unidades: parseInt(r.unidades, 10),
+                total: parseFloat(r.total)
+            }))
+        });
+    } catch (err) {
+        console.error('Error al generar reportes:', err);
+        res.status(500).json({ error: 'Error al generar el panel de reportes' });
+    }
+});
+
+// Ruta principal SPA: debe ir después de todas las rutas /api para no interceptarlas.
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor ejecutándose en http://localhost:${PORT}`));
-
-
+app.listen(PORT, () => {
+    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+    eliminarAccesosInactivosVencidos();
+    setInterval(eliminarAccesosInactivosVencidos, 60 * 60 * 1000);
+});

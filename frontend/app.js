@@ -71,6 +71,10 @@ function App() {
   const [ultimaVenta, setUltimaVenta] = useState(null);
   const [ventasGerencia, setVentasGerencia] = useState([]);
   const [paginaVentas, setPaginaVentas] = useState(1);
+  const [busquedaVentas, setBusquedaVentas] = useState('');
+  const [filtroMetodoVentas, setFiltroMetodoVentas] = useState('todos');
+  const [fechaInicioVentas, setFechaInicioVentas] = useState('');
+  const [fechaFinVentas, setFechaFinVentas] = useState('');
   const [ticketSeleccionado, setTicketSeleccionado] = useState(null);
 
   // Administración de proveedores
@@ -88,8 +92,25 @@ function App() {
   const [insumosProveedorSeleccionados, setInsumosProveedorSeleccionados] = useState({});
   const [cargandoInsumosProveedor, setCargandoInsumosProveedor] = useState(false);
   const [guardandoInsumosProveedor, setGuardandoInsumosProveedor] = useState(false);
+  // Compras a proveedores: cada pedido puede contener productos e insumos.
+  const [modalCompraAbierto, setModalCompraAbierto] = useState(false);
+  const [catalogoCompras, setCatalogoCompras] = useState([]);
+  const [categoriaCompraSeleccionada, setCategoriaCompraSeleccionada] = useState('');
+  const [cargandoCatalogoCompras, setCargandoCatalogoCompras] = useState(false);
+  const [guardandoCompra, setGuardandoCompra] = useState(false);
+  const [confirmacionCompraAbierta, setConfirmacionCompraAbierta] = useState(false);
+  const [mensajeCompra, setMensajeCompra] = useState({ visible: false, tipo: 'info', titulo: '', texto: '' });
+
+  const [comprasProveedor, setComprasProveedor] = useState([]);
+  const [formCompra, setFormCompra] = useState({ id_proveedor: '', fecha_compra: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(), metodo_pago: 'Efectivo', observaciones: '', items: [] });
+
   const PROVEEDORES_POR_PAGINA = 12;
   const VENTAS_POR_PAGINA = 12;
+  // Fecha local del navegador en formato YYYY-MM-DD para limitar los filtros.
+  const fechaHoyVentas = (() => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  })();
 
   // Estados para Personalización
   const [productoPersonalizando, setProductoPersonalizando] = useState(null);
@@ -102,8 +123,19 @@ function App() {
   const [empleados, setEmpleados] = useState([]);
   const [cargandoEmpleados, setCargandoEmpleados] = useState(false);
   const [busquedaEmpleado, setBusquedaEmpleado] = useState('');
+  const [fechaInicioEmpleados, setFechaInicioEmpleados] = useState('');
+  const [fechaFinEmpleados, setFechaFinEmpleados] = useState('');
+  const [paginaEmpleados, setPaginaEmpleados] = useState(1);
+  const [vistaImpresionEmpleados, setVistaImpresionEmpleados] = useState(false);
+  const EMPLEADOS_POR_PAGINA = 12;
   const [modalEmpleadoAbierto, setModalEmpleadoAbierto] = useState(false);
   const [modalCrearUsuarioAbierto, setModalCrearUsuarioAbierto] = useState(false);
+    const [empleadoEditando, setEmpleadoEditando] = useState(null);
+    const [passwordEmpleadoEdicion, setPasswordEmpleadoEdicion] = useState('');
+    const [avisoEmpleado, setAvisoEmpleado] = useState({ visible: false, tipo: 'info', titulo: '', texto: '' });
+    const [confirmacionEstadoEmpleado, setConfirmacionEstadoEmpleado] = useState(null);
+    const [guardandoEmpleado, setGuardandoEmpleado] = useState(false);
+
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
 
   const [formEmpleado, setFormEmpleado] = useState({ nombre: '', telefono: '', id_rol: 1 });
@@ -113,6 +145,43 @@ function App() {
   visible: false,
   mensaje: ''
 });
+const [reportesData, setReportesData] = useState(null);
+  const fechaHoyReportes = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+  const [fechaInicioReportes, setFechaInicioReportes] = useState('');
+  const [fechaFinReportes, setFechaFinReportes] = useState('');
+  const [periodoAplicadoReportes, setPeriodoAplicadoReportes] = useState({ inicio: '', fin: '' });
+  const [contabilidadData, setContabilidadData] = useState({ movimientos: [], resumen: { ingresos: 0, egresos: 0 } });
+  const [compraTicketAbierta, setCompraTicketAbierta] = useState(null);
+  const [fechaInicioCompras, setFechaInicioCompras] = useState('');
+  const [fechaFinCompras, setFechaFinCompras] = useState('');
+  const [periodoComprasAplicado, setPeriodoComprasAplicado] = useState({ inicio: '', fin: '' });
+  const [paginaCompras, setPaginaCompras] = useState(1);
+  const COMPRAS_POR_PAGINA = 12;
+  const [fechaInicioGastos, setFechaInicioGastos] = useState('');
+  const [fechaFinGastos, setFechaFinGastos] = useState('');
+  const [periodoGastosAplicado, setPeriodoGastosAplicado] = useState({ inicio: '', fin: '' });
+  const [paginaGastos, setPaginaGastos] = useState(1);
+  const [fechaInicioPagos, setFechaInicioPagos] = useState('');
+  const [fechaFinPagos, setFechaFinPagos] = useState('');
+  const [periodoPagosAplicado, setPeriodoPagosAplicado] = useState({ inicio: '', fin: '' });
+  const [paginaPagos, setPaginaPagos] = useState(1);
+  const [paginaNominas, setPaginaNominas] = useState(1);
+  const [gastoDetalleAbierto, setGastoDetalleAbierto] = useState(null);
+  const [pagoDetalleAbierto, setPagoDetalleAbierto] = useState(null);
+  const [confirmacionContable, setConfirmacionContable] = useState(null);
+  const [avisoContable, setAvisoContable] = useState(null);
+  const [guardandoContable, setGuardandoContable] = useState(false);
+  const [cargandoContabilidad, setCargandoContabilidad] = useState(false);
+  const [nominas, setNominas] = useState([]);
+  const [pagosNomina, setPagosNomina] = useState([]);
+  const [modalGastoExtra, setModalGastoExtra] = useState(false);
+  const [modalNomina, setModalNomina] = useState(false);
+  const [formGastoExtra, setFormGastoExtra] = useState({ concepto: '', categoria: 'Transporte', monto: '', fecha_gasto: new Date().toLocaleDateString('en-CA'), metodo_pago: 'Efectivo', observaciones: '' });
+  const [formNomina, setFormNomina] = useState({ id_empleado: '', sueldo_mensual: '' });
+  const [fechaSemanaNomina, setFechaSemanaNomina] = useState(new Date().toLocaleDateString('en-CA'));
+
+  const [cargandoReportes, setCargandoReportes] = useState(false);
+  const [errorReportes, setErrorReportes] = useState('');
 
   /* ==================================================
      USUARIO / ROL
@@ -189,6 +258,140 @@ function App() {
     }
   };
 
+const cargarReportes = async (opciones = {}) => {
+  const inicio = opciones.todo ? '' : (opciones.fechaInicio ?? fechaInicioReportes);
+  const fin = opciones.todo ? '' : (opciones.fechaFin ?? fechaFinReportes);
+
+  if (inicio && fin && inicio > fin) {
+    setErrorReportes('La fecha inicial no puede ser posterior a la fecha final.');
+    return;
+  }
+  if ((inicio && inicio > fechaHoyReportes) || (fin && fin > fechaHoyReportes)) {
+    setErrorReportes('No puedes seleccionar fechas futuras.');
+    return;
+  }
+
+  setCargandoReportes(true);
+  setErrorReportes('');
+  setReportesData(null); // Evita dejar visibles resultados del periodo anterior mientras se aplica el nuevo filtro.
+
+  try {
+    const parametros = new URLSearchParams();
+    if (inicio) parametros.set('fechaInicio', inicio);
+    if (fin) parametros.set('fechaFin', fin);
+    const query = parametros.toString();
+    const response = await fetch(`/api/reportes${query ? `?${query}` : ''}`, { cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error || `Error HTTP ${response.status}`);
+    }
+
+    if (!data.resumen || !Array.isArray(data.top_productos) || !Array.isArray(data.ventas_categoria)) {
+      throw new Error('El servidor devolvió una respuesta de reportes incompleta.');
+    }
+
+    setReportesData(data);
+    setPeriodoAplicadoReportes({ inicio, fin });
+  } catch (error) {
+    console.error('Error al cargar reportes:', error);
+    setErrorReportes(error.message || 'No fue posible cargar los reportes.');
+  } finally {
+    setCargandoReportes(false);
+  }
+};
+  // Imprime únicamente el documento administrativo de reportes.
+  const imprimirReportes = () => {
+    if (!reportesData) {
+      alert('Primero debes cargar los datos del reporte.');
+      return;
+    }
+    document.body.classList.add('printing-reportes');
+    const limpiarImpresion = () => {
+      document.body.classList.remove('printing-reportes');
+      window.removeEventListener('afterprint', limpiarImpresion);
+    };
+    window.addEventListener('afterprint', limpiarImpresion);
+    window.print();
+    setTimeout(limpiarImpresion, 2000);
+  };
+
+  const mostrarAvisoContable = (tipo, titulo, texto) => setAvisoContable({ tipo, titulo, texto });
+
+  const cargarContabilidad = async () => {
+    setCargandoContabilidad(true);
+    try {
+      const response = await fetch('/api/contabilidad', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo cargar Contabilidad');
+      setContabilidadData(data);
+    } catch (err) {
+      console.error('Error al cargar contabilidad:', err);
+      mostrarAvisoContable('error', 'No se pudo cargar', err.message || 'Error al cargar Contabilidad');
+    } finally { setCargandoContabilidad(false); }
+  };
+
+  const cargarNominas = async () => {
+    try {
+      const response = await fetch('/api/nominas', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudieron cargar las nóminas');
+      setNominas(data.nominas || []);
+      setPagosNomina(data.pagos || []);
+    } catch (err) { mostrarAvisoContable('error', 'No se pudieron cargar las nóminas', err.message); }
+  };
+
+  const guardarGastoExtra = async (e) => {
+    e.preventDefault();
+    setGuardandoContable(true);
+    try {
+      const response = await fetch('/api/contabilidad/gastos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formGastoExtra) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo registrar el gasto');
+      setModalGastoExtra(false);
+      setFormGastoExtra({ concepto: '', categoria: 'Transporte', monto: '', fecha_gasto: new Date().toLocaleDateString('en-CA'), metodo_pago: 'Efectivo', observaciones: '' });
+      await cargarContabilidad();
+      mostrarAvisoContable('success', 'Gasto registrado', 'El gasto adicional se agregó correctamente a los egresos.');
+    } catch (err) { mostrarAvisoContable('error', 'No se pudo registrar', err.message); }
+    finally { setGuardandoContable(false); }
+  };
+
+  const guardarConfiguracionNomina = async (e) => {
+    e.preventDefault();
+    setGuardandoContable(true);
+    try {
+      const response = await fetch('/api/nominas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(formNomina) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo guardar la nómina');
+      setModalNomina(false); setFormNomina({ id_empleado: '', sueldo_mensual: '' });
+      await cargarNominas();
+      mostrarAvisoContable('success', 'Nómina configurada', 'La nómina quedó configurada correctamente.');
+    } catch (err) { mostrarAvisoContable('error', 'No se pudo guardar', err.message); }
+    finally { setGuardandoContable(false); }
+  };
+
+  const registrarPagoNomina = async (nomina) => {
+    setConfirmacionContable({
+      titulo: 'Confirmar pago semanal',
+      texto: `¿Registrar el pago de ${money(nomina.pago_semanal)} para ${nomina.nombre}?`,
+      confirmar: async () => {
+        setConfirmacionContable(null);
+        setGuardandoContable(true);
+        try {
+          const response = await fetch(`/api/nominas/${nomina.id_nomina}/pagos`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ semana_inicio: obtenerInicioSemana(fechaSemanaNomina), metodo_pago: 'Transferencia' }) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'No se pudo registrar el pago');
+          await Promise.all([cargarNominas(), cargarContabilidad()]);
+          mostrarAvisoContable('success', 'Pago registrado', `Se registró el pago semanal de ${money(data.monto)} para ${nomina.nombre}.`);
+        } catch (err) { mostrarAvisoContable('error', 'No se pudo registrar el pago', err.message); }
+        finally { setGuardandoContable(false); }
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (usuario && vistaActual === 'Contabilidad') { cargarContabilidad(); cargarNominas(); }
+  }, [usuario, vistaActual]);
 
   /* ==================================================
      NAVEGACIÓN DE GERENCIA
@@ -375,6 +578,125 @@ function App() {
     }
   };
 
+
+  const abrirNuevaCompra = async () => {
+    setCategoriaCompraSeleccionada('');
+    setFormCompra({ id_proveedor: '', fecha_compra: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(), metodo_pago: 'Efectivo', observaciones: '', items: [] });
+    setModalCompraAbierto(true);
+    setCargandoCatalogoCompras(true);
+    try {
+      const [catalogoRes, historialRes] = await Promise.all([
+        fetch('/api/catalogo-compras', { cache: 'no-store' }),
+        fetch('/api/compras', { cache: 'no-store' })
+      ]);
+      const catalogo = await catalogoRes.json();
+      const historial = await historialRes.json();
+      if (!catalogoRes.ok) throw new Error(catalogo.error || 'No se pudo cargar el catálogo');
+      if (!historialRes.ok) throw new Error(historial.error || 'No se pudo cargar el historial');
+      setCatalogoCompras(Array.isArray(catalogo) ? catalogo : []);
+      setComprasProveedor(Array.isArray(historial) ? historial : []);
+    } catch (err) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'No se pudo preparar la compra', texto: err.message || 'Ocurrió un error al cargar los artículos.' });
+    } finally {
+      setCargandoCatalogoCompras(false);
+    }
+  };
+
+  const obtenerFechaLocalHoy = () => {
+    const hoy = new Date();
+    return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+  };
+
+  const obtenerPresentacionCompra = (unidad = '') => {
+    const u = String(unidad).trim().toLowerCase();
+    if (['gramo', 'gramos', 'g', 'gr'].includes(u)) {
+      return { etiqueta: 'unidad de 1 kg', detalle: '1 unidad = 1 kg (1,000 g)', factorStock: 1000, unidadStock: 'gramos' };
+    }
+    if (['mililitro', 'mililitros', 'ml', 'cc'].includes(u)) {
+      return { etiqueta: 'unidad de 1 L', detalle: '1 unidad = 1 L (1,000 ml)', factorStock: 1000, unidadStock: 'mililitros' };
+    }
+    if (['kilogramo', 'kilogramos', 'kg', 'kilo', 'kilos'].includes(u)) {
+      return { etiqueta: 'unidad de 1 kg', detalle: '1 unidad = 1 kg', factorStock: 1, unidadStock: unidad || 'kg' };
+    }
+    if (['litro', 'litros', 'l', 'lt', 'lts'].includes(u)) {
+      return { etiqueta: 'unidad de 1 L', detalle: '1 unidad = 1 L', factorStock: 1, unidadStock: unidad || 'L' };
+    }
+    return { etiqueta: 'pieza / unidad', detalle: `1 unidad = 1 ${unidad || 'pieza'}`, factorStock: 1, unidadStock: unidad || 'piezas' };
+  };
+
+  const agregarItemCompra = (articulo) => {
+    setFormCompra(prev => {
+      const existente = prev.items.find(x => x.tipo === articulo.tipo && Number(x.id_articulo) === Number(articulo.id_articulo));
+      if (existente) return { ...prev, items: prev.items.map(x => x === existente ? { ...x, cantidad: Number(x.cantidad) + 1 } : x) };
+      const presentacion = obtenerPresentacionCompra(articulo.unidad);
+      return { ...prev, items: [...prev.items, { tipo: articulo.tipo, id_articulo: articulo.id_articulo, nombre: articulo.nombre, unidad: articulo.unidad, presentacion_compra: presentacion.etiqueta, detalle_presentacion: presentacion.detalle, factor_stock: presentacion.factorStock, cantidad: 1, precio_unitario: Number(articulo.precio_sugerido || 0) }] };
+    });
+  };
+
+  const actualizarItemCompra = (indice, campo, valor) => {
+    if (['cantidad', 'precio_unitario'].includes(campo) && valor !== '') {
+      const numero = Number(valor);
+      if (!Number.isFinite(numero) || numero < 0) return;
+      if (campo === 'cantidad' && !Number.isInteger(numero)) return;
+    }
+    setFormCompra(prev => ({ ...prev, items: prev.items.map((x, i) => i === indice ? { ...x, [campo]: valor } : x) }));
+  };
+
+  const guardarCompraProveedor = async (e) => {
+    e.preventDefault();
+    if (!formCompra.id_proveedor) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'Falta seleccionar proveedor', texto: 'Selecciona el proveedor que surtió esta compra.' });
+      return;
+    }
+    if (!formCompra.fecha_compra) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'Falta la fecha', texto: 'Selecciona la fecha en que realizaste la compra.' });
+      return;
+    }
+    if (formCompra.fecha_compra > obtenerFechaLocalHoy()) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'Fecha no válida', texto: 'La fecha de compra no puede ser posterior al día de hoy.' });
+      return;
+    }
+    if (!formCompra.items.length) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'Pedido vacío', texto: 'Agrega al menos un producto o insumo al pedido.' });
+      return;
+    }
+    if (formCompra.items.some(x => !Number.isInteger(Number(x.cantidad)) || Number(x.cantidad) <= 0 || x.precio_unitario === '' || x.precio_unitario === null || x.precio_unitario === undefined || !Number.isFinite(Number(x.precio_unitario)) || Number(x.precio_unitario) <= 0)) {
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'Precio unitario obligatorio', texto: 'Todos los artículos deben tener un precio unitario mayor a $0.00. Completa los precios antes de continuar.' });
+      return;
+    }
+    setConfirmacionCompraAbierta(true);
+  };
+
+  const confirmarCompraProveedor = async () => {
+    if (guardandoCompra) return;
+    setGuardandoCompra(true);
+    try {
+      const response = await fetch('/api/compras', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id_proveedor: Number(formCompra.id_proveedor),
+          fecha_compra: String(formCompra.fecha_compra).trim(),
+          metodo_pago: formCompra.metodo_pago,
+          observaciones: formCompra.observaciones,
+          items: formCompra.items.map(x => ({ tipo: x.tipo, id_articulo: Number(x.id_articulo), cantidad: Number(x.cantidad), precio_unitario: Number(x.precio_unitario) }))
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo registrar la compra');
+      setConfirmacionCompraAbierta(false);
+      setModalCompraAbierto(false);
+      await Promise.all([cargarProveedores(), cargarInventario(), cargarMenu()]);
+      setMensajeCompra({ visible: true, tipo: 'success', titulo: 'Compra registrada', texto: `La compra ${data.folio} se recibió correctamente. El inventario y Contabilidad fueron actualizados.` });
+      // Refresh the accounting data if the view is currently open.
+      if (vistaActual === 'Contabilidad') await cargarContabilidad();
+    } catch (err) {
+      setConfirmacionCompraAbierta(false);
+      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'No se pudo registrar la compra', texto: err.message || 'Ocurrió un error al registrar la compra.' });
+    } finally {
+      setGuardandoCompra(false);
+    }
+  };
+
   const cambiarEstadoProveedor = async (proveedor) => {
     const estadoNuevo = (proveedor.estado || 'Activo') === 'Activo' ? 'Inactivo' : 'Activo';
     if (!window.confirm(`¿Deseas marcar a ${proveedor.nombre} como ${estadoNuevo.toLowerCase()}?`)) return;
@@ -446,7 +768,7 @@ const cargarEmpleados = async () => {
         if (response.ok) {
             setEmpleados(Array.isArray(data) ? data : []);
         } else {
-            alert(data.error || 'Error al obtener la lista de empleados');
+            mostrarAvisoEmpleado('error', 'No se pudo cargar el personal', data.error || 'Error al obtener la lista de empleados.');
         }
     } catch (err) {
         console.error('Error al cargar empleados:', err);
@@ -461,29 +783,82 @@ useEffect(() => {
     }
 }, [usuario, vistaActual]);
 
+const mostrarAvisoEmpleado = (tipo, titulo, texto) => {
+    setAvisoEmpleado({ visible: true, tipo, titulo, texto });
+};
+
+const abrirNuevoEmpleado = () => {
+    setEmpleadoEditando(null);
+    setPasswordEmpleadoEdicion('');
+    setFormEmpleado({ nombre: '', lada: '52', telefono: '', id_rol: 1 });
+    setModalEmpleadoAbierto(true);
+};
+
+const abrirEditarEmpleado = (emp) => {
+    setEmpleadoEditando(emp);
+    setPasswordEmpleadoEdicion('');
+    const telefonoGuardado = String(emp.telefono || '').trim();
+    const partesTelefono = telefonoGuardado.match(/^\+(\d{1,4})[\s-]*(\d{4,14})$/);
+    setFormEmpleado({
+        nombre: emp.nombre || '',
+        lada: partesTelefono ? partesTelefono[1] : '52',
+        telefono: partesTelefono ? partesTelefono[2] : telefonoGuardado.replace(/\D/g, ''),
+        id_rol: Number(emp.id_rol || 1)
+    });
+    setModalEmpleadoAbierto(true);
+};
+
 const guardarEmpleado = async (e) => {
     e.preventDefault();
-    if (!formEmpleado.nombre.trim()) return alert('Ingresa el nombre del empleado');
+    if (!formEmpleado.nombre.trim()) {
+        mostrarAvisoEmpleado('error', 'Falta el nombre', 'Ingresa el nombre del empleado.');
+        return;
+    }
+    const ladaLimpia = String(formEmpleado.lada || '').replace(/\D/g, '');
+    const telefonoLimpio = String(formEmpleado.telefono || '').replace(/\D/g, '');
+    if ((ladaLimpia || telefonoLimpio) && (!/^\d{1,4}$/.test(ladaLimpia) || !/^\d{4,14}$/.test(telefonoLimpio))) {
+        mostrarAvisoEmpleado('error', 'Teléfono no válido', 'Ingresa un código de país de 1 a 4 dígitos y un número telefónico de 4 a 14 dígitos.');
+        return;
+    }
+    const telefonoCompleto = telefonoLimpio ? `+${ladaLimpia}${telefonoLimpio}` : '';
+    if (empleadoEditando && passwordEmpleadoEdicion && passwordEmpleadoEdicion.length < 6) {
+        mostrarAvisoEmpleado('error', 'Contraseña demasiado corta', 'La nueva contraseña debe tener al menos 6 caracteres.');
+        return;
+    }
+    setGuardandoEmpleado(true);
     try {
-        const response = await fetch('/api/empleados', {
-            method: 'POST',
+        const editando = Boolean(empleadoEditando);
+        const url = editando ? `/api/empleados/${empleadoEditando.id_empleado}` : '/api/empleados';
+        const response = await fetch(url, {
+            method: editando ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formEmpleado)
+            body: JSON.stringify({
+                ...formEmpleado,
+                telefono: telefonoCompleto,
+                password: passwordEmpleadoEdicion || undefined
+            })
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'No se pudo crear el empleado');
-        
+        if (!response.ok) throw new Error(data.error || (editando ? 'No se pudo actualizar el empleado' : 'No se pudo crear el empleado'));
+
         setModalEmpleadoAbierto(false);
-        setFormEmpleado({ nombre: '', telefono: '', id_rol: 1 });
+        setEmpleadoEditando(null);
+        setPasswordEmpleadoEdicion('');
+        setFormEmpleado({ nombre: '', lada: '52', telefono: '', id_rol: 1 });
         await cargarEmpleados();
+        mostrarAvisoEmpleado('success', editando ? 'Empleado actualizado' : 'Empleado registrado',
+            editando ? 'Los datos del empleado se guardaron correctamente.' : 'El empleado se registró correctamente.');
     } catch (err) {
-        alert(err.message);
+        mostrarAvisoEmpleado('error', 'No se pudo guardar', err.message || 'Ocurrió un error al guardar el empleado.');
+    } finally {
+        setGuardandoEmpleado(false);
     }
 };
 
 const guardarUsuarioEmpleado = async (e) => {
     e.preventDefault();
     if (!empleadoSeleccionado) return;
+    setGuardandoEmpleado(true);
     try {
         const response = await fetch(`/api/empleados/${empleadoSeleccionado.id_empleado}/usuario`, {
             method: 'POST',
@@ -496,32 +871,74 @@ const guardarUsuarioEmpleado = async (e) => {
         setModalCrearUsuarioAbierto(false);
         setFormUsuario({ username: '', password: '' });
         await cargarEmpleados();
-        alert(`Acceso creado correctamente para @${data.usuario.username}`);
+        mostrarAvisoEmpleado('success', 'Acceso creado', `Se creó correctamente el acceso @${data.usuario.username}.`);
     } catch (err) {
-        alert(err.message);
+        mostrarAvisoEmpleado('error', 'No se pudo crear el acceso', err.message || 'Ocurrió un error al crear el usuario.');
+    } finally {
+        setGuardandoEmpleado(false);
     }
 };
 
-const cambiarEstadoEmpleado = async (emp) => {
-  const estadoActual = (emp.estado || 'Activo').trim();
-  const nuevoEstado = estadoActual === 'Activo' ? 'Inactivo' : 'Activo';
-  
-  if (!window.confirm(`¿Deseas cambiar el estado de "${emp.nombre}" a ${nuevoEstado}?`)) return;
+const eliminarEmpleado = async (emp) => {
+    const confirmar = window.confirm(
+        `¿Eliminar definitivamente a ${emp.nombre}? También se eliminará su cuenta de acceso y contraseña. Esta acción no se puede deshacer.`
+    );
+    if (!confirmar) return;
+    setGuardandoEmpleado(true);
+    try {
+        const response = await fetch(`/api/empleados/${emp.id_empleado}`, { method: 'DELETE' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'No se pudo eliminar el empleado.');
+        await cargarEmpleados();
+        mostrarAvisoEmpleado('success', 'Empleado eliminado', 'Se eliminó el registro y su cuenta de acceso.');
+    } catch (err) {
+        mostrarAvisoEmpleado('error', 'No se pudo eliminar', err.message || 'El empleado puede tener registros relacionados.');
+    } finally {
+        setGuardandoEmpleado(false);
+    }
+};
 
-  try {
-    const response = await fetch(`/api/empleados/${emp.id_empleado}/estado`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ estado: nuevoEstado })
-    });
-    
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
-    
-    await cargarEmpleados();
-  } catch (err) {
-    alert(err.message || 'Error al actualizar el estado');
-  }
+const imprimirEmpleados = () => {
+    setVistaImpresionEmpleados(true);
+    document.body.classList.add('printing-empleados');
+    const limpiar = () => {
+        setVistaImpresionEmpleados(false);
+        document.body.classList.remove('printing-empleados');
+        window.removeEventListener('afterprint', limpiar);
+    };
+    window.addEventListener('afterprint', limpiar);
+    setTimeout(() => window.print(), 250);
+    setTimeout(limpiar, 5000);
+};
+
+const cambiarEstadoEmpleado = (emp) => {
+    const estadoActual = (emp.estado || 'Activo').trim();
+    const nuevoEstado = estadoActual === 'Activo' ? 'Inactivo' : 'Activo';
+    setConfirmacionEstadoEmpleado({ empleado: emp, nuevoEstado });
+};
+
+const confirmarCambioEstadoEmpleado = async () => {
+    if (!confirmacionEstadoEmpleado || guardandoEmpleado) return;
+    const { empleado: emp, nuevoEstado } = confirmacionEstadoEmpleado;
+    setGuardandoEmpleado(true);
+    try {
+        const response = await fetch(`/api/empleados/${emp.id_empleado}/estado`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ estado: nuevoEstado })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
+        setConfirmacionEstadoEmpleado(null);
+        await cargarEmpleados();
+        mostrarAvisoEmpleado('success', nuevoEstado === 'Activo' ? 'Empleado activado' : 'Empleado suspendido',
+            `${emp.nombre} ahora está ${nuevoEstado.toLowerCase()}.`);
+    } catch (err) {
+        setConfirmacionEstadoEmpleado(null);
+        mostrarAvisoEmpleado('error', 'No se pudo cambiar el estado', err.message || 'Error al actualizar el estado.');
+    } finally {
+        setGuardandoEmpleado(false);
+    }
 };
   /* ==================================================
      CARRITO Y PERSONALIZACIÓN
@@ -539,7 +956,9 @@ const cambiarEstadoEmpleado = async (emp) => {
 
  const abrirPersonalizacion = (producto) => {
     // La API /api/menu debe entregar tamanos y extras configurados para cada producto.
-    const tamanos = Array.isArray(producto.tamanos) ? producto.tamanos : [];
+    // Mostrar únicamente tamaños con capacidad expresada en onzas.
+    const tamanos = (Array.isArray(producto.tamanos) ? producto.tamanos : [])
+      .filter(t => /oz/i.test(String(t.nombre || '')));
     const extras = Array.isArray(producto.extras) ? producto.extras : [];
 
     // Si no hay opciones configuradas, se agrega el producto con su precio normal.
@@ -685,6 +1104,23 @@ const cambiarEstadoEmpleado = async (emp) => {
     });
   };
 
+  const obtenerInicioSemana = (valor) => {
+    if (!valor) return '';
+    const fecha = new Date(`${String(valor).slice(0,10)}T12:00:00`);
+    const dia = fecha.getDay();
+    fecha.setDate(fecha.getDate() - ((dia + 6) % 7));
+    return `${fecha.getFullYear()}-${String(fecha.getMonth()+1).padStart(2,'0')}-${String(fecha.getDate()).padStart(2,'0')}`;
+  };
+
+  const formatearFechaContable = (valor) => {
+    if (!valor) return '—';
+    const texto = String(valor);
+    const fecha = /^\\d{4}-\\d{2}-\\d{2}$/.test(texto)
+      ? new Date(`${texto}T12:00:00`)
+      : new Date(texto);
+    return Number.isNaN(fecha.getTime()) ? '—' : fecha.toLocaleDateString('es-MX');
+  };
+
 
   /* ==================================================
      CATEGORÍA Y FILTROS
@@ -827,6 +1263,85 @@ const cambiarEstadoEmpleado = async (emp) => {
   };
 
 
+  const GASTOS_POR_PAGINA = 12;
+  const PAGOS_POR_PAGINA = 12;
+  const NOMINAS_POR_PAGINA = 12;
+  const totalPaginasNominas = Math.max(1, Math.ceil(nominas.length / NOMINAS_POR_PAGINA));
+  const paginaNominasSegura = Math.min(paginaNominas, totalPaginasNominas);
+  const nominasPaginaActual = nominas.slice((paginaNominasSegura - 1) * NOMINAS_POR_PAGINA, paginaNominasSegura * NOMINAS_POR_PAGINA);
+  const gastosExtra = (contabilidadData.movimientos || []).filter(g => !['compras a proveedores', 'nómina'].includes(String(g.categoria || '').trim().toLowerCase()));
+  const gastosFiltrados = gastosExtra.filter(g => {
+    const fecha = String(g.fecha_gasto || '').slice(0, 10);
+    return (!periodoGastosAplicado.inicio || fecha >= periodoGastosAplicado.inicio) && (!periodoGastosAplicado.fin || fecha <= periodoGastosAplicado.fin);
+  });
+  const totalPaginasGastos = Math.max(1, Math.ceil(gastosFiltrados.length / GASTOS_POR_PAGINA));
+  const paginaGastosSegura = Math.min(paginaGastos, totalPaginasGastos);
+  const gastosPaginaActual = gastosFiltrados.slice((paginaGastosSegura - 1) * GASTOS_POR_PAGINA, paginaGastosSegura * GASTOS_POR_PAGINA);
+  const aplicarFiltroGastos = (todas = false) => {
+    const inicio = todas ? '' : fechaInicioGastos, fin = todas ? '' : fechaFinGastos;
+    if (inicio && fin && inicio > fin) return mostrarAvisoContable('error', 'Periodo no válido', 'La fecha inicial no puede ser posterior a la fecha final.');
+    setPeriodoGastosAplicado({ inicio, fin }); setPaginaGastos(1); setGastoDetalleAbierto(null);
+  };
+  const pagosFiltrados = pagosNomina.filter(p => {
+    const fecha = String(p.fecha_pago || p.semana_inicio || '').slice(0, 10);
+    return (!periodoPagosAplicado.inicio || fecha >= periodoPagosAplicado.inicio) && (!periodoPagosAplicado.fin || fecha <= periodoPagosAplicado.fin);
+  });
+  const totalPaginasPagos = Math.max(1, Math.ceil(pagosFiltrados.length / PAGOS_POR_PAGINA));
+  const paginaPagosSegura = Math.min(paginaPagos, totalPaginasPagos);
+  const pagosPaginaActual = pagosFiltrados.slice((paginaPagosSegura - 1) * PAGOS_POR_PAGINA, paginaPagosSegura * PAGOS_POR_PAGINA);
+  const aplicarFiltroPagos = (todas = false) => {
+    const inicio = todas ? '' : fechaInicioPagos, fin = todas ? '' : fechaFinPagos;
+    if (inicio && fin && inicio > fin) return mostrarAvisoContable('error', 'Periodo no válido', 'La fecha inicial no puede ser posterior a la fecha final.');
+    setPeriodoPagosAplicado({ inicio, fin }); setPaginaPagos(1); setPagoDetalleAbierto(null);
+  };
+  const imprimirSeccionContable = (clase, hayDatos, etiqueta) => {
+    if (!hayDatos) return mostrarAvisoContable('info', 'Sin registros', `No hay ${etiqueta} en el periodo seleccionado para imprimir.`);
+    const bodyClass = `printing-${clase}`;
+    document.body.classList.add(bodyClass);
+    const limpiar = () => { document.body.classList.remove(bodyClass); window.removeEventListener('afterprint', limpiar); };
+    window.addEventListener('afterprint', limpiar); window.print(); setTimeout(limpiar, 2000);
+  };
+
+  // Compras filtradas por fecha. La paginación solo afecta la tabla, no la impresión.
+  const comprasFiltradas = (contabilidadData.compras || []).filter(compra => {
+    const fecha = String(compra.fecha_compra || '').slice(0, 10);
+    return (!periodoComprasAplicado.inicio || fecha >= periodoComprasAplicado.inicio) &&
+           (!periodoComprasAplicado.fin || fecha <= periodoComprasAplicado.fin);
+  });
+  const totalPaginasCompras = Math.max(1, Math.ceil(comprasFiltradas.length / COMPRAS_POR_PAGINA));
+  const paginaComprasSegura = Math.min(paginaCompras, totalPaginasCompras);
+  const comprasPaginaActual = comprasFiltradas.slice(
+    (paginaComprasSegura - 1) * COMPRAS_POR_PAGINA,
+    paginaComprasSegura * COMPRAS_POR_PAGINA
+  );
+
+  const aplicarFiltroCompras = (todas = false) => {
+    const inicio = todas ? '' : fechaInicioCompras;
+    const fin = todas ? '' : fechaFinCompras;
+    if (inicio && fin && inicio > fin) {
+      mostrarAvisoContable('error', 'Periodo no válido', 'La fecha inicial no puede ser posterior a la fecha final.');
+      return;
+    }
+    setPeriodoComprasAplicado({ inicio, fin });
+    setPaginaCompras(1);
+    setCompraTicketAbierta(null);
+  };
+
+  const imprimirComprasFiltradas = () => {
+    if (!comprasFiltradas.length) {
+      mostrarAvisoContable('info', 'Sin compras', 'No hay compras en el periodo seleccionado para imprimir.');
+      return;
+    }
+    document.body.classList.add('printing-compras');
+    const limpiar = () => {
+      document.body.classList.remove('printing-compras');
+      window.removeEventListener('afterprint', limpiar);
+    };
+    window.addEventListener('afterprint', limpiar);
+    window.print();
+    setTimeout(limpiar, 2000);
+  };
+
   /* ==================================================
      LOGIN VIEW
   ================================================== */
@@ -876,13 +1391,72 @@ const cambiarEstadoEmpleado = async (emp) => {
   }
 
 
-  // Paginación del historial: mostrar 12 ventas por página sin alterar los totales generales.
-  const totalPaginasVentas = Math.max(1, Math.ceil(ventasGerencia.length / VENTAS_POR_PAGINA));
+  // Filtros del historial de ventas. Los indicadores y la impresión respetan el periodo/filtros activos.
+  const ventasFiltradas = ventasGerencia.filter(v => {
+    const metodo = String(v.metodo_pago || '').toLowerCase();
+    const folio = String(v.folio ?? '');
+    const fecha = v.fecha_hora ? new Date(v.fecha_hora) : null;
+    const fechaISO = fecha && !Number.isNaN(fecha.getTime())
+      ? `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
+      : '';
+    const texto = busquedaVentas.trim().toLowerCase();
+    const coincideTexto = !texto || folio.includes(texto.replace(/^#?tk-?/, '')) ||
+      (v.detalles || []).some(d => String(d.nombre || '').toLowerCase().includes(texto));
+    const coincideMetodo = filtroMetodoVentas === 'todos' || metodo === filtroMetodoVentas;
+    const coincideInicio = !fechaInicioVentas || (fechaISO && fechaISO >= fechaInicioVentas);
+    const coincideFin = !fechaFinVentas || (fechaISO && fechaISO <= fechaFinVentas);
+    return coincideTexto && coincideMetodo && coincideInicio && coincideFin;
+  });
+
+  const totalPaginasVentas = Math.max(1, Math.ceil(ventasFiltradas.length / VENTAS_POR_PAGINA));
   const paginaVentasSegura = Math.min(paginaVentas, totalPaginasVentas);
-  const ventasPaginaActual = ventasGerencia.slice(
+  const ventasPaginaActual = ventasFiltradas.slice(
     (paginaVentasSegura - 1) * VENTAS_POR_PAGINA,
     paginaVentasSegura * VENTAS_POR_PAGINA
   );
+
+  const limpiarFiltrosVentas = () => {
+    setBusquedaVentas('');
+    setFiltroMetodoVentas('todos');
+    setFechaInicioVentas('');
+    setFechaFinVentas('');
+    setPaginaVentas(1);
+  };
+
+  const imprimirHistorialVentas = () => {
+    document.body.classList.add('printing-sales-history');
+    const limpiar = () => {
+      document.body.classList.remove('printing-sales-history');
+      window.removeEventListener('afterprint', limpiar);
+    };
+    window.addEventListener('afterprint', limpiar);
+    window.print();
+    setTimeout(limpiar, 2000);
+  };
+
+  const imprimirTicketVenta = () => {
+    if (!ticketSeleccionado) return;
+    document.body.classList.add('printing-sales-ticket');
+    const limpiar = () => {
+      document.body.classList.remove('printing-sales-ticket');
+      window.removeEventListener('afterprint', limpiar);
+    };
+    window.addEventListener('afterprint', limpiar);
+    window.print();
+    setTimeout(limpiar, 2000);
+  };
+
+  // Filtrado de empleados compartido por la tabla, paginación e impresión.
+  // Debe vivir en el ámbito de App para que no quede encerrado en el IIFE del tbody.
+  const empleadosFiltrados = empleados.filter(e => {
+    const coincideTexto = [e.nombre, e.username, e.rol, e.telefono, e.estado].some(v =>
+      String(v || '').toLowerCase().includes(busquedaEmpleado.toLowerCase().trim())
+    );
+    const fecha = e.fecha_inactivacion ? String(e.fecha_inactivacion).slice(0, 10) : '';
+    const coincideDesde = !fechaInicioEmpleados || (fecha && fecha >= fechaInicioEmpleados);
+    const coincideHasta = !fechaFinEmpleados || (fecha && fecha <= fechaFinEmpleados);
+    return coincideTexto && coincideDesde && coincideHasta;
+  });
 
   /* ==================================================
      POS / INVENTARIO / GERENCIA VIEW
@@ -916,13 +1490,28 @@ const cambiarEstadoEmpleado = async (emp) => {
 
             <button
               type="button"
-              className="management-btn"
+              className={`management-btn view-nav-btn ${vistaActual === 'pos' ? 'is-active' : ''}`}
+              aria-current={vistaActual === 'pos' ? 'page' : undefined}
               onClick={() => {
-                setVistaActual(vistaActual === 'inventario' ? 'pos' : 'inventario');
+                setVistaActual('pos');
                 setMenuGerenciaAbierto(false);
               }}
             >
-              {vistaActual === 'inventario' ? 'Punto de venta' : 'Inventario'}
+              <span className="view-nav-icon" aria-hidden="true">▣</span>
+              Punto de venta
+            </button>
+
+            <button
+              type="button"
+              className={`management-btn view-nav-btn inventory-nav-btn ${vistaActual === 'inventario' ? 'is-active' : ''}`}
+              aria-current={vistaActual === 'inventario' ? 'page' : undefined}
+              onClick={() => {
+                setVistaActual('inventario');
+                setMenuGerenciaAbierto(false);
+              }}
+            >
+              <span className="view-nav-icon" aria-hidden="true">▤</span>
+              Inventario
             </button>
 
             {esAdministrador && (
@@ -951,7 +1540,7 @@ const cambiarEstadoEmpleado = async (emp) => {
                       onClick={() => abrirSeccionGerencia('Contabilidad')}
                     >
                       <span>Contabilidad</span>
-                      <span className="management-status soon">vista previa</span>
+                      <span className="management-status active">activo</span>
                     </button>
                     <button
                       type="button"
@@ -979,11 +1568,14 @@ const cambiarEstadoEmpleado = async (emp) => {
                     <button
                       type="button"
                       className="management-item"
-                      onClick={() => abrirSeccionGerencia('reportes')}
-                    >
-                      <span>Reportes</span>
-                      <span className="management-status soon">vista previa</span>
-                    </button>
+                       onClick={() => {
+                       setVistaActual('reportes');
+                       setMenuGerenciaAbierto(false);
+                       cargarReportes();
+                        }}
+>
+                      <span>Reportes</span> <span className="management-status">activo</span>
+                  </button>
                   </div>
                 )}
               </div>
@@ -1311,79 +1903,15 @@ const cambiarEstadoEmpleado = async (emp) => {
 
                         {tipoInventario === 'insumos' ? (
                           <>
-                            <td>
-                              {esAdministrador ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.001"
-                                  defaultValue={item.stock_actual}
-                                  className="stock-input"
-                                  onBlur={e => {
-                                    const nuevoStock = e.target.value;
-                                    if (nuevoStock !== String(item.stock_actual)) {
-                                      actualizarInsumoInventario(item.id_producto ?? item.id_insumo, nuevoStock, item.stock_minimo);
-                                    }
-                                  }}
-                                />
-                              ) : <span>{item.stock_actual}</span>}
-                            </td>
-                            <td>
-                              {esAdministrador ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.001"
-                                  defaultValue={item.stock_minimo}
-                                  className="stock-input"
-                                  onBlur={e => {
-                                    const nuevoMin = e.target.value;
-                                    if (nuevoMin !== String(item.stock_minimo)) {
-                                      actualizarInsumoInventario(item.id_producto ?? item.id_insumo, item.stock_actual, nuevoMin);
-                                    }
-                                  }}
-                                />
-                              ) : <span>{item.stock_minimo}</span>}
-                            </td>
+                            <td><span>{Number(item.stock_actual || 0).toLocaleString('es-MX', { maximumFractionDigits: 3 })}</span></td>
+                            <td><span>{Number(item.stock_minimo || 0).toLocaleString('es-MX', { maximumFractionDigits: 3 })}</span></td>
                             <td>{item.unidad || '—'}</td>
                           </>
                         ) : (
                           <>
                             <td>{money(item.precio)}</td>
-                            <td>
-                              {esAdministrador ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  defaultValue={item.stock_actual ?? stockProducto}
-                                  className="stock-input"
-                                  onBlur={e => {
-                                    const nuevoStock = e.target.value;
-                                    if (nuevoStock !== String(item.stock_actual ?? stockProducto)) {
-                                      actualizarInsumoInventario(item.id_producto, nuevoStock, item.stock_minimo ?? stockMinimoProducto, 'producto');
-                                    }
-                                  }}
-                                />
-                              ) : <span>{stockProducto}</span>}
-                            </td>
-                            <td>
-                              {esAdministrador ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="1"
-                                  defaultValue={item.stock_minimo ?? stockMinimoProducto}
-                                  className="stock-input"
-                                  onBlur={e => {
-                                    const nuevoMin = e.target.value;
-                                    if (nuevoMin !== String(item.stock_minimo ?? stockMinimoProducto)) {
-                                      actualizarInsumoInventario(item.id_producto, item.stock_actual ?? stockProducto, nuevoMin, 'producto');
-                                    }
-                                  }}
-                                />
-                              ) : <span>{stockMinimoProducto}</span>}
-                            </td>
+                            <td><span>{stockProducto}</span></td>
+                            <td><span>{stockMinimoProducto}</span></td>
                           </>
                         )}
 
@@ -1394,9 +1922,7 @@ const cambiarEstadoEmpleado = async (emp) => {
                         </td>
                         <td>
                           <small className="muted-note">
-                            {tipoInventario === 'insumos'
-                              ? (esAdministrador ? 'Edición habilitada' : 'Solo lectura')
-                              : (esAdministrador ? 'Edición habilitada' : 'Solo lectura')}
+                            'Solo lectura · se actualiza mediante compras a proveedores'
                           </small>
                         </td>
                       </tr>
@@ -1417,19 +1943,19 @@ const cambiarEstadoEmpleado = async (emp) => {
 
         {/* MÓDULO DE PROVEEDORES */}
         {vistaActual === 'proveedores' && (
-          <main className="management-page" style={{ width: '100%', maxWidth: 'none', boxSizing: 'border-box', padding: '26px 28px' }}>
+          <main className="management-page suppliers-page" style={{ width: '100%', maxWidth: 'none', boxSizing: 'border-box', padding: '26px 28px' }}>
             <div className="management-page-header" style={{ width: '100%', boxSizing: 'border-box' }}>
               <div>
                 <h2 className="title">Proveedores</h2>
-                <div className="subtitle">Administra los datos de contacto y el estado de tus proveedores.</div>
+                <div className="subtitle">Administra proveedores, registra pedidos y recibe productos e insumos en inventario.</div>
               </div>
-              <button type="button" className="management-back-btn" onClick={abrirNuevoProveedor}>+ Nuevo proveedor</button>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" className="btn-outline" onClick={abrirNuevaCompra}>＋ Registrar compra</button><button type="button" className="management-back-btn" onClick={abrirNuevoProveedor}>+ Nuevo proveedor</button></div>
             </div>
 
-            <section className="management-placeholder-panel" style={{ width: '100%', maxWidth: 'none', minWidth: 0, boxSizing: 'border-box', padding: 24, background: '#fff', borderRadius: 14, border: '1px solid #e8dfd3', marginTop: 18, boxShadow: '0 3px 12px rgba(54, 43, 29, 0.04)' }}>
+            <section className="management-placeholder-panel suppliers-panel" style={{ width: '100%', maxWidth: 'none', minWidth: 0, boxSizing: 'border-box', padding: 24, background: '#fff', borderRadius: 14, border: '1px solid #e8dfd3', marginTop: 18, boxShadow: '0 3px 12px rgba(54, 43, 29, 0.04)' }}>
               <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 22 }}>
                 <div><strong style={{ fontSize: 22 }}>{proveedores.length}</strong><div className="subtitle">Proveedores registrados</div></div>
-                <input type="search" value={busquedaProveedor} onChange={e => { setBusquedaProveedor(e.target.value); setPaginaProveedores(1); }} placeholder="Buscar por nombre, contacto o teléfono..." aria-label="Buscar proveedores" style={{ width: 360, minWidth: 260, maxWidth: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid #d5d9e0', borderRadius: 9, background: '#fff', fontSize: 14 }} />
+                <input type="search" value={busquedaProveedor} onChange={e => { setBusquedaProveedor(e.target.value); setPaginaProveedores(1); }} placeholder="Buscar por nombre, contacto o teléfono..." aria-label="Buscar proveedores" className="suppliers-search" style={{ width: 360, minWidth: 260, maxWidth: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid #d5d9e0', borderRadius: 9, background: '#fff', fontSize: 14 }} />
               </div>
               {cargandoProveedores ? <p>Cargando proveedores...</p> : (() => {
                 const filtrados = proveedores.filter(p => [p.nombre, p.contacto, p.telefono, p.estado].some(v => String(v || '').toLowerCase().includes(busquedaProveedor.toLowerCase().trim())));
@@ -1437,16 +1963,16 @@ const cambiarEstadoEmpleado = async (emp) => {
                 const pagina = Math.min(paginaProveedores, paginas);
                 const visibles = filtrados.slice((pagina - 1) * PROVEEDORES_POR_PAGINA, pagina * PROVEEDORES_POR_PAGINA);
                 return <>
-                  <div style={{ width: '100%', overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, tableLayout: 'auto' }}>
-                      <thead><tr style={{ textAlign: 'left', background: '#f7f8fa' }}>{['Proveedor', 'Contacto', 'Teléfono', 'Estado', 'Insumos', 'Acciones'].map(t => <th key={t} style={{ padding: '14px 16px', borderBottom: '1px solid #e6e8ec', whiteSpace: 'nowrap', fontSize: 13, color: '#34413b' }}>{t}</th>)}</tr></thead>
+                  <div className="suppliers-table-wrap" style={{ width: '100%', overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10 }}>
+                    <table className="suppliers-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, tableLayout: 'auto' }}>
+                      <thead><tr style={{ textAlign: 'left', background: '#f7f8fa' }}>{['Proveedor', 'Contacto', 'Teléfono', 'Estado', 'Catálogo', 'Acciones'].map(t => <th key={t} style={{ padding: '14px 16px', borderBottom: '1px solid #e6e8ec', whiteSpace: 'nowrap', fontSize: 13, color: '#34413b' }}>{t}</th>)}</tr></thead>
                       <tbody>
                         {visibles.map(p => <tr key={p.id_proveedor}>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 180 }}><strong style={{ overflowWrap: 'anywhere' }}>{p.nombre}</strong><div style={{ color: '#7b8492', fontSize: 12 }}>ID: {p.id_proveedor}</div></td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 220, overflowWrap: 'anywhere' }}>{p.contacto || '—'}</td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 150, whiteSpace: 'nowrap' }}>{p.telefono || '—'}</td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3' }}><span style={{ display: 'inline-block', padding: '5px 9px', borderRadius: 20, fontSize: 12, background: (p.estado || 'Activo') === 'Activo' ? '#e4f7ec' : '#f0f1f3', color: (p.estado || 'Activo') === 'Activo' ? '#197443' : '#5f6670' }}>{p.estado || 'Activo'}</span></td>
-                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" onClick={() => abrirInsumosProveedor(p)} style={{ marginRight: 8 }}>Ver insumos ({p.total_insumos || 0})</button></td><td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" onClick={() => abrirEditarProveedor(p)} style={{ marginRight: 8 }}>Editar</button><button type="button" onClick={() => cambiarEstadoProveedor(p)}>{(p.estado || 'Activo') === 'Activo' ? 'Desactivar' : 'Activar'}</button></td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" className="supplier-action-btn supplier-catalog-btn" onClick={() => abrirInsumosProveedor(p)} style={{ marginRight: 8 }}>Ver insumos ({p.total_insumos || 0})</button></td><td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" className="supplier-action-btn" onClick={() => abrirEditarProveedor(p)} style={{ marginRight: 8 }}>Editar</button><button type="button" className="supplier-action-btn supplier-toggle-btn" onClick={() => cambiarEstadoProveedor(p)}>{(p.estado || 'Activo') === 'Activo' ? 'Desactivar' : 'Activar'}</button></td>
                         </tr>)}
                         {visibles.length === 0 && <tr><td colSpan="6" style={{ padding: 24, textAlign: 'center', color: '#697386' }}>{filtrados.length === 0 ? 'No hay proveedores que coincidan con la búsqueda.' : 'No hay registros en esta página.'}</td></tr>}
                       </tbody>
@@ -1460,6 +1986,87 @@ const cambiarEstadoEmpleado = async (emp) => {
                 </>;
               })()}
             </section>
+
+
+            {confirmacionCompraAbierta && <div className="modal-overlay purchase-dialog-overlay" onClick={e => { if (e.target === e.currentTarget && !guardandoCompra) setConfirmacionCompraAbierta(false); }}>
+              <section className="payment-modal purchase-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmar-compra-titulo">
+                <div className="purchase-dialog-icon">✓</div>
+                <h3 id="confirmar-compra-titulo">¿Confirmar recepción de compra?</h3>
+                <p>Al continuar, se aumentarán las existencias de los artículos y se registrará el importe como egreso en Contabilidad.</p>
+                <div className="purchase-dialog-total">Total: {money(formCompra.items.reduce((s,x)=>s+Number(x.cantidad||0)*Number(x.precio_unitario||0),0))}</div>
+                <div className="modal-actions">
+                  <button type="button" className="modal-secondary" onClick={() => setConfirmacionCompraAbierta(false)} disabled={guardandoCompra}>Seguir revisando</button>
+                  <button type="button" className="modal-primary" onClick={confirmarCompraProveedor} disabled={guardandoCompra}>{guardandoCompra ? 'Registrando...' : 'Sí, confirmar compra'}</button>
+                </div>
+              </section>
+            </div>}
+
+            {mensajeCompra.visible && <div className="modal-overlay purchase-dialog-overlay" onClick={e => { if (e.target === e.currentTarget) setMensajeCompra(p=>({...p,visible:false})); }}>
+              <section className="payment-modal purchase-dialog" role="alertdialog" aria-modal="true" aria-labelledby="mensaje-compra-titulo">
+                <div className={`purchase-dialog-icon ${mensajeCompra.tipo}`}>{mensajeCompra.tipo === 'success' ? '✓' : '!'}</div>
+                <h3 id="mensaje-compra-titulo">{mensajeCompra.titulo}</h3>
+                <p>{mensajeCompra.texto}</p>
+                <div className="modal-actions"><button type="button" className="modal-primary" onClick={() => setMensajeCompra(p=>({...p,visible:false}))}>Aceptar</button></div>
+              </section>
+            </div>}
+
+            {modalCompraAbierto && <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget && !guardandoCompra) setModalCompraAbierto(false); }}>
+              <section className="payment-modal purchase-registration-modal" style={{width:'min(100%, 1050px)', maxWidth:1050, maxHeight:'90vh', overflowY:'auto'}}>
+                <div className="modal-header">
+                  <div><h3>Registrar compra a proveedor</h3><p>Al confirmar la recepción, se sumarán las existencias y se registrará el egreso contable.</p></div>
+                  <button type="button" className="modal-close" onClick={() => setModalCompraAbierto(false)} disabled={guardandoCompra}>×</button>
+                </div>
+                {cargandoCatalogoCompras ? <p>Cargando productos e insumos...</p> : <form onSubmit={guardarCompraProveedor}>
+                  <div className="modal-section">
+                    <label className="modal-label">Proveedor *</label>
+                    <select className="field-select" required value={formCompra.id_proveedor} onChange={e => setFormCompra(p => ({...p,id_proveedor:e.target.value}))}>
+                      <option value="">Selecciona un proveedor</option>
+                      {proveedores.filter(p => (p.estado || 'Activo') === 'Activo').map(p => <option key={p.id_proveedor} value={p.id_proveedor}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:12,marginTop:12}}>
+                    <div className="cash-field"><label>Fecha de compra</label><input type="date" required max={obtenerFechaLocalHoy()} value={formCompra.fecha_compra} onChange={e=>setFormCompra(p=>({...p,fecha_compra:e.target.value && e.target.value <= obtenerFechaLocalHoy() ? e.target.value : obtenerFechaLocalHoy()}))}/></div>
+                    <div className="cash-field"><label>Método de pago</label><select value={formCompra.metodo_pago} onChange={e=>setFormCompra(p=>({...p,metodo_pago:e.target.value}))}><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Crédito</option></select></div>
+                  </div>
+                  <div className="modal-section" style={{marginTop:16}}>
+                    <label className="modal-label">Agregar artículos</label>
+                    <div style={{display:'grid',gridTemplateColumns:'minmax(220px, 360px) 1fr',gap:12,alignItems:'end',marginBottom:12}}>
+                      <div className="cash-field">
+                        <label htmlFor="categoria-compra">Filtrar por categoría</label>
+                        <select id="categoria-compra" className="field-select" value={categoriaCompraSeleccionada} onChange={e=>setCategoriaCompraSeleccionada(e.target.value)} disabled={!formCompra.id_proveedor}>
+                          <option value="">Selecciona una categoría</option>
+                          {[...new Set(catalogoCompras.map(x=>x.categoria || 'General'))].sort((x,y)=>x.localeCompare(y,'es')).map(cat=><option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                      </div>
+                      <small style={{color:'#81786e'}}>Selecciona una categoría para desplegar sus insumos y productos.</small>
+                    </div>
+                    {categoriaCompraSeleccionada ? (
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:10}}>
+                        {catalogoCompras.filter(x=>(x.categoria || 'General')===categoriaCompraSeleccionada).map(a=><button key={`${a.tipo}-${a.id_articulo}`} type="button" className="btn-outline purchase-item-choice" onClick={()=>agregarItemCompra(a)} disabled={!formCompra.id_proveedor} style={{textAlign:'left',padding:12}}>
+                          <strong>{a.nombre}</strong><small style={{display:'block',opacity:.7}}>{a.tipo === 'producto' ? 'Producto de cafetería' : 'Insumo'} · {obtenerPresentacionCompra(a.unidad).detalle}</small>
+                        </button>)}
+                      </div>
+                    ) : <div className="table-empty" style={{padding:18,textAlign:'center'}}>Selecciona primero un proveedor y después una categoría para mostrar los artículos disponibles.</div>}
+                  </div>
+                  <div style={{overflowX:'auto',marginTop:16}}>
+                    <table className="inventory-table"><thead><tr><th>Artículo</th><th>Tipo</th><th>Cantidad (unidades de compra)</th><th>Precio por unidad</th><th>Importe</th><th></th></tr></thead>
+                      <tbody>{formCompra.items.map((x,i)=><tr key={`${x.tipo}-${x.id_articulo}`}><td>{x.nombre}</td><td>{x.tipo==='producto'?'Producto':'Insumo'}</td>
+                        <td><div className="purchase-quantity-cell"><input type="number" min="1" step="1" inputMode="numeric" value={x.cantidad} onKeyDown={e=>{if(['-','.','e','E'].includes(e.key))e.preventDefault();}} onChange={e=>actualizarItemCompra(i,'cantidad',e.target.value)} style={{width:92}}/><small>{x.detalle_presentacion || obtenerPresentacionCompra(x.unidad).detalle}</small></div></td>
+                        <td><input type="number" min="0.01" step="0.01" inputMode="decimal" required value={x.precio_unitario} onKeyDown={e=>{if(e.key==='-')e.preventDefault();}} onChange={e=>actualizarItemCompra(i,'precio_unitario',e.target.value)} placeholder="Precio obligatorio" aria-invalid={!Number.isFinite(Number(x.precio_unitario)) || Number(x.precio_unitario)<=0} style={{width:140,borderColor:Number(x.precio_unitario)>0?'':'#c65b42'}}/>{Number(x.precio_unitario)<=0 && <small style={{display:'block',color:'#b34d36'}}>Debe ser mayor a $0.00</small>}</td>
+                        <td><strong>{money(Number(x.cantidad)*Number(x.precio_unitario))}</strong></td>
+                        <td><button type="button" className="btn-outline" onClick={()=>setFormCompra(p=>({...p,items:p.items.filter((_,j)=>j!==i)}))}>Quitar</button></td>
+                      </tr>)}
+                      {!formCompra.items.length && <tr><td colSpan="6" className="table-empty">Todavía no agregas artículos al pedido.</td></tr>}</tbody>
+                    </table>
+                  </div>
+                  <div className="cash-field" style={{marginTop:12}}><label>Observaciones</label><textarea rows="2" value={formCompra.observaciones} onChange={e=>setFormCompra(p=>({...p,observaciones:e.target.value}))} placeholder="Factura, número de pedido o notas..."/></div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',marginTop:16}}>
+                    <strong style={{fontSize:20}}>Total: {money(formCompra.items.reduce((s,x)=>s+Number(x.cantidad||0)*Number(x.precio_unitario||0),0))}</strong>
+                    <div style={{display:'flex',gap:10}}><button type="button" className="modal-secondary" onClick={()=>setModalCompraAbierto(false)} disabled={guardandoCompra}>Cancelar</button><button type="submit" className="modal-primary purchase-footer-btn purchase-confirm-btn" disabled={guardandoCompra || !formCompra.id_proveedor || !formCompra.items.length || formCompra.items.some(x=>!Number.isFinite(Number(x.precio_unitario)) || Number(x.precio_unitario)<=0)}>{guardandoCompra?'Registrando...':'Confirmar recepción y compra'}</button></div>
+                  </div>
+                </form>}
+              </section>
+            </div>}
 
             {modalInsumosProveedor && <div role="presentation" onClick={e => { if (e.target === e.currentTarget && !guardandoInsumosProveedor) setModalInsumosProveedor(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(15,23,42,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
               <section role="dialog" aria-modal="true" aria-labelledby="titulo-insumos-proveedor" style={{ width: '100%', maxWidth: 820, maxHeight: '88vh', overflowY: 'auto', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.22)' }}>
@@ -1516,17 +2123,19 @@ const cambiarEstadoEmpleado = async (emp) => {
               </div>
 
               <section className="management-placeholder-panel">
-                <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 20 }}>
+                <div className="employees-toolbar">
                   <div>
                     <strong>{empleados.length}</strong>
                     <div className="subtitle">Empleados registrados</div>
                   </div>
-                  <input
-                    type="search"
-                    placeholder="Buscar por nombre o usuario..."
-                    value={busquedaEmpleado}
-                    onChange={e => setBusquedaEmpleado(e.target.value)}
-                  />
+                  <input type="search" placeholder="Buscar por nombre o usuario..." value={busquedaEmpleado}
+                    onChange={e => { setBusquedaEmpleado(e.target.value); setPaginaEmpleados(1); }} />
+                  <div className="employees-date-filters">
+                    <label>Inactivos desde <input type="date" value={fechaInicioEmpleados} onChange={e => {setFechaInicioEmpleados(e.target.value);setPaginaEmpleados(1);}} /></label>
+                    <label>Hasta <input type="date" value={fechaFinEmpleados} onChange={e => {setFechaFinEmpleados(e.target.value);setPaginaEmpleados(1);}} /></label>
+                    <button type="button" className="btn-outline" onClick={() => {setFechaInicioEmpleados('');setFechaFinEmpleados('');setBusquedaEmpleado('');setPaginaEmpleados(1);}}>Limpiar filtros</button>
+                    <button type="button" className="management-back-btn" onClick={imprimirEmpleados}>Imprimir</button>
+                  </div>
                 </div>
 
                 <div className="inventory-table-wrapper">
@@ -1539,30 +2148,29 @@ const cambiarEstadoEmpleado = async (emp) => {
                         <th>Rol</th>
                         <th>Cuenta de Acceso</th>
                         <th>Estado</th>
+                        <th>Tiempo inactivo</th>
                         <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {cargandoEmpleados ? (
-                        <tr><td colSpan="7" className="table-empty">Cargando personal...</td></tr>
+                        <tr><td colSpan="8" className="table-empty">Cargando personal...</td></tr>
                       ) : (() => {
-                        const filtrados = empleados.filter(e =>
-                          [e.nombre, e.username, e.rol, e.telefono, e.estado].some(v =>
-                            String(v || '').toLowerCase().includes(busquedaEmpleado.toLowerCase().trim())
-                          )
-                        );
+                        const totalPaginas = Math.max(1, Math.ceil(empleadosFiltrados.length / EMPLEADOS_POR_PAGINA));
+                        const paginaActual = Math.min(paginaEmpleados, totalPaginas);
+                        const empleadosPagina = vistaImpresionEmpleados ? empleadosFiltrados : empleadosFiltrados.slice((paginaActual - 1) * EMPLEADOS_POR_PAGINA, paginaActual * EMPLEADOS_POR_PAGINA);
 
-                        if (filtrados.length === 0) {
-                          return <tr><td colSpan="7" className="table-empty">No se encontraron empleados.</td></tr>;
+                        if (empleadosFiltrados.length === 0) {
+                          return <tr><td colSpan="8" className="table-empty">No se encontraron empleados.</td></tr>;
                         }
 
-                        return filtrados.map(emp => {
+                        return empleadosPagina.map(emp => {
                           const esActivo = (emp.estado || 'Activo').trim() === 'Activo';
                           return (
                             <tr key={emp.id_empleado}>
                               <td><strong>#{emp.id_empleado}</strong></td>
                               <td><strong>{emp.nombre}</strong></td>
-                              <td>{emp.telefono || '—'}</td>
+                              <td>{emp.telefono ? (String(emp.telefono).startsWith('+') ? String(emp.telefono) : `+52 ${emp.telefono}`) : '—'}</td>
                               <td>{emp.rol}</td>
                               <td>
                                 {emp.username ? (
@@ -1576,9 +2184,18 @@ const cambiarEstadoEmpleado = async (emp) => {
                                   {esActivo ? 'Activo' : 'Inactivo'}
                                 </span>
                               </td>
+                              <td>
+                                {esActivo ? '—' : (emp.tiempo_inactivo || 'Menos de un día')}
+                                {!esActivo && emp.fecha_inactivacion && (
+                                  <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 3 }}>
+                                    Desde {new Date(emp.fecha_inactivacion).toLocaleDateString('es-MX')}
+                                  </div>
+                                )}
+                              </td>
 
                               <td>
-                                <div style={{ display: 'flex', gap: 8 }}>
+                                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                  <button type="button" className="btn-outline" onClick={() => abrirEditarEmpleado(emp)}>Editar</button>
                                   {!emp.username && (
                                     <button
                                       type="button"
@@ -1598,6 +2215,9 @@ const cambiarEstadoEmpleado = async (emp) => {
                                   >
                                     {esActivo ? 'Desactivar' : 'Activar'}
                                   </button>
+                                  <button type="button" className="btn-outline employee-delete-btn" onClick={() => eliminarEmpleado(emp)} disabled={guardandoEmpleado}>
+                                    Eliminar
+                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -1607,7 +2227,39 @@ const cambiarEstadoEmpleado = async (emp) => {
                     </tbody>
                   </table>
                 </div>
+                <div className="employees-pagination">
+                  <span>Mostrando {empleadosFiltrados.length ? (Math.min((paginaEmpleados - 1) * EMPLEADOS_POR_PAGINA + 1, empleadosFiltrados.length)) : 0}–{Math.min(paginaEmpleados * EMPLEADOS_POR_PAGINA, empleadosFiltrados.length)} de {empleadosFiltrados.length} empleados</span>
+                  <div>
+                    <button type="button" className="btn-outline" disabled={paginaEmpleados <= 1} onClick={() => setPaginaEmpleados(p => Math.max(1, p - 1))}>Anterior</button>
+                    <span>Página {Math.min(paginaEmpleados, Math.max(1, Math.ceil(empleadosFiltrados.length / EMPLEADOS_POR_PAGINA)))} de {Math.max(1, Math.ceil(empleadosFiltrados.length / EMPLEADOS_POR_PAGINA))}</span>
+                    <button type="button" className="btn-outline" disabled={paginaEmpleados >= Math.ceil(empleadosFiltrados.length / EMPLEADOS_POR_PAGINA)} onClick={() => setPaginaEmpleados(p => p + 1)}>Siguiente</button>
+                  </div>
+                </div>
               </section>
+
+              {confirmacionEstadoEmpleado && (
+                <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget && !guardandoEmpleado)setConfirmacionEstadoEmpleado(null);}}>
+                  <section className="payment-modal" role="dialog" aria-modal="true" style={{maxWidth:440,textAlign:'center'}}>
+                    <div className="purchase-dialog-icon">{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '!' : '✓'}</div>
+                    <h3>{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '¿Suspender empleado?' : '¿Activar empleado?'}</h3>
+                    <p>¿Deseas cambiar el estado de {confirmacionEstadoEmpleado.empleado.nombre} a {confirmacionEstadoEmpleado.nuevoEstado.toLowerCase()}?</p>
+                    <div className="modal-actions">
+                      <button type="button" className="modal-secondary" onClick={()=>setConfirmacionEstadoEmpleado(null)} disabled={guardandoEmpleado}>Cancelar</button>
+                      <button type="button" className="modal-primary" onClick={confirmarCambioEstadoEmpleado} disabled={guardandoEmpleado}>{guardandoEmpleado ? 'Procesando...' : 'Confirmar'}</button>
+                    </div>
+                  </section>
+                </div>
+              )}
+              {avisoEmpleado.visible && (
+                <div className="modal-overlay employee-notice-overlay" onClick={e=>{if(e.target===e.currentTarget)setAvisoEmpleado(p=>({...p,visible:false}));}}>
+                  <section className="payment-modal" role="alertdialog" aria-modal="true" style={{maxWidth:440,textAlign:'center'}}>
+                    <div className={`purchase-dialog-icon ${avisoEmpleado.tipo}`}>{avisoEmpleado.tipo==='success'?'✓':'!'}</div>
+                    <h3>{avisoEmpleado.titulo}</h3>
+                    <p>{avisoEmpleado.texto}</p>
+                    <div className="modal-actions"><button type="button" className="modal-primary" onClick={()=>setAvisoEmpleado(p=>({...p,visible:false}))}>Aceptar</button></div>
+                  </section>
+                </div>
+              )}
 
               {/* MODAL REGISTRAR EMPLEADO */}
               {modalEmpleadoAbierto && (
@@ -1615,10 +2267,10 @@ const cambiarEstadoEmpleado = async (emp) => {
                   <div className="payment-modal">
                     <div className="modal-header">
                       <div>
-                        <h3>Nuevo Empleado</h3>
-                        <p>Ingresa la información básica del personal.</p>
+                        <h3>{empleadoEditando ? 'Editar empleado' : 'Nuevo empleado'}</h3>
+                        <p>{empleadoEditando ? 'Actualiza los datos y, si lo necesitas, establece una nueva contraseña de acceso.' : 'Ingresa la información básica del personal.'}</p>
                       </div>
-                      <button type="button" className="modal-close" onClick={() => setModalEmpleadoAbierto(false)}>×</button>
+                      <button type="button" className="modal-close" onClick={() => { setModalEmpleadoAbierto(false); setEmpleadoEditando(null); setPasswordEmpleadoEdicion(''); }}>×</button>
                     </div>
                     <form onSubmit={guardarEmpleado}>
                       <div className="cash-field">
@@ -1633,12 +2285,16 @@ const cambiarEstadoEmpleado = async (emp) => {
                       </div>
                       <div className="cash-field">
                         <label>Teléfono</label>
-                        <input
-                          type="text"
-                          maxLength="40"
-                          value={formEmpleado.telefono}
-                          onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value })}
-                        />
+                        <div className="phone-input-wrap employee-phone-input">
+                          <div className="employee-country-code">
+                            <span>+</span>
+                            <input type="tel" inputMode="numeric" aria-label="Lada o código de país" maxLength="4" placeholder="52" value={formEmpleado.lada} onChange={e => setFormEmpleado({ ...formEmpleado, lada: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+                          </div>
+                          <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="14" placeholder="Número telefónico"
+                            value={formEmpleado.telefono}
+                            onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value.replace(/\D/g, '').slice(0, 14) })} />
+                        </div>
+                        <small>Escribe la lada o código de país y el número sin espacios. Ejemplo: +52 y 6623259338.</small>
                       </div>
                       <div className="modal-section">
                         <label className="modal-label">Rol del sistema</label>
@@ -1651,9 +2307,16 @@ const cambiarEstadoEmpleado = async (emp) => {
                           <option value={2}>Administrador (Acceso completo)</option>
                         </select>
                       </div>
+                      {empleadoEditando?.username && (
+                        <div className="cash-field">
+                          <label>Nueva contraseña de acceso (opcional)</label>
+                          <input type="password" autoComplete="new-password" minLength="6" value={passwordEmpleadoEdicion} onChange={e=>setPasswordEmpleadoEdicion(e.target.value)} placeholder="Dejar vacío para conservar la actual" />
+                          <small>Por seguridad, la contraseña actual nunca se muestra. Solo se cambia si escribes una nueva.</small>
+                        </div>
+                      )}
                       <div className="modal-actions">
-                        <button type="button" className="modal-secondary" onClick={() => setModalEmpleadoAbierto(false)}>Cancelar</button>
-                        <button type="submit" className="modal-primary">Guardar empleado</button>
+                        <button type="button" className="modal-secondary" onClick={() => { setModalEmpleadoAbierto(false); setEmpleadoEditando(null); setPasswordEmpleadoEdicion(''); }}>Cancelar</button>
+                        <button type="submit" className="modal-primary" disabled={guardandoEmpleado}>{guardandoEmpleado ? 'Guardando...' : (empleadoEditando ? 'Guardar cambios' : 'Guardar empleado')}</button>
                       </div>
                     </form>
                   </div>
@@ -1703,7 +2366,7 @@ const cambiarEstadoEmpleado = async (emp) => {
         )}
 
         {/* OTRAS VISTAS DE GERENCIA EN PREPARACIÓN */}
-        {seccionesGerencia[vistaActual] && vistaActual !== 'proveedores' && (
+        {seccionesGerencia[vistaActual] && vistaActual !== 'proveedores' && vistaActual !== 'reportes' && vistaActual !== 'Contabilidad' && (
           <main className="management-page">
             <div className="management-page-header"><div><h2 className="title">{seccionesGerencia[vistaActual].titulo}</h2><div className="subtitle">{seccionesGerencia[vistaActual].descripcion}</div></div><span className="management-preview-badge">Boceto</span></div>
             <section className="management-empty-state"><div className="management-empty-icon">{seccionesGerencia[vistaActual].icono}</div><h3>{seccionesGerencia[vistaActual].mensaje}</h3><p>{seccionesGerencia[vistaActual].detalle}</p><div className="management-placeholder-panel" aria-hidden="true"><div className="management-placeholder-line"></div><div className="management-placeholder-line short"></div><div className="management-placeholder-line"></div></div><button type="button" className="management-back-btn" onClick={() => setVistaActual('pos')}>Volver al punto de venta</button></section>
@@ -1713,41 +2376,96 @@ const cambiarEstadoEmpleado = async (emp) => {
         {/* VISTA GERENCIA VENTAS */}
         {vistaActual === 'gerencia-ventas' && (
           <div className="inventory-view">
-            <div className="inventory-header">
+            <div className="inventory-header sales-header">
               <div>
                 <h2 className="title">Historial de Ventas y Arqueo de Caja</h2>
-                <div className="subtitle">Detalle de cobros, recibidos y devoluciones</div>
+                <div className="subtitle">Consulta, filtra e imprime los movimientos de caja.</div>
+              </div>
+              <div className="sales-header-actions">
+                <button type="button" className="btn-outline" onClick={() => { cargarVentasGerencia(); setPaginaVentas(1); }}>↻ Actualizar</button>
+                <button type="button" className="management-btn" onClick={imprimirHistorialVentas}>▤ Imprimir historial</button>
               </div>
             </div>
+
+            <section className="sales-filters-panel">
+              <div className="sales-filter-field sales-search-field">
+                <label htmlFor="busqueda-ventas">Buscar venta</label>
+                <input id="busqueda-ventas" type="search" value={busquedaVentas}
+                  onChange={e => { setBusquedaVentas(e.target.value); setPaginaVentas(1); }}
+                  placeholder="Folio o nombre de producto..." />
+              </div>
+              <div className="sales-filter-field">
+                <label htmlFor="filtro-metodo-ventas">Método de pago</label>
+                <select id="filtro-metodo-ventas" value={filtroMetodoVentas}
+                  onChange={e => { setFiltroMetodoVentas(e.target.value); setPaginaVentas(1); }}>
+                  <option value="todos">Todos los métodos</option>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </select>
+              </div>
+              <div className="sales-filter-field">
+                <label htmlFor="fecha-inicio-ventas">Desde</label>
+                <input id="fecha-inicio-ventas" type="date" value={fechaInicioVentas}
+                  max={fechaHoyVentas}
+                  onChange={e => {
+                    const nuevaFecha = e.target.value;
+                    if (nuevaFecha && nuevaFecha > fechaHoyVentas) return;
+                    setFechaInicioVentas(nuevaFecha);
+                    // Si el inicio supera al fin actual, mueve el fin al mismo día.
+                    if (nuevaFecha && fechaFinVentas && fechaFinVentas < nuevaFecha) {
+                      setFechaFinVentas(nuevaFecha);
+                    }
+                    setPaginaVentas(1);
+                  }} />
+              </div>
+              <div className="sales-filter-field">
+                <label htmlFor="fecha-fin-ventas">Hasta</label>
+                <input id="fecha-fin-ventas" type="date" value={fechaFinVentas}
+                  min={fechaInicioVentas || undefined}
+                  max={fechaHoyVentas}
+                  onChange={e => {
+                    const nuevaFecha = e.target.value;
+                    if (nuevaFecha && (nuevaFecha > fechaHoyVentas ||
+                      (fechaInicioVentas && nuevaFecha < fechaInicioVentas))) return;
+                    setFechaFinVentas(nuevaFecha);
+                    setPaginaVentas(1);
+                  }} />
+              </div>
+              <button type="button" className="sales-clear-filters" onClick={limpiarFiltrosVentas}>Limpiar filtros</button>
+            </section>
 
             <div className="kpi-grid">
               <div className="kpi-card brown">
                 <div className="kpi-label">Ingresos Totales</div>
                 <div className="kpi-value">
-                  {money(ventasGerencia.reduce((sum, v) => sum + v.total, 0))}
+                  {money(ventasFiltradas.reduce((sum, v) => sum + v.total, 0))}
                 </div>
               </div>
               <div className="kpi-card green">
                 <div className="kpi-label">Efectivo Recibido</div>
                 <div className="kpi-value">
-                  {money(ventasGerencia.filter(v => v.metodo_pago.toLowerCase() === 'efectivo').reduce((sum, v) => sum + (v.efectivo_recibido || v.total), 0))}
+                  {money(ventasFiltradas.filter(v => String(v.metodo_pago || '').toLowerCase() === 'efectivo').reduce((sum, v) => sum + (v.efectivo_recibido || v.total), 0))}
                 </div>
               </div>
               <div className="kpi-card amber">
                 <div className="kpi-label">Cambio Entregado</div>
                 <div className="kpi-value">
-                  {money(ventasGerencia.reduce((sum, v) => sum + (v.cambio_entregado || 0), 0))}
+                  {money(ventasFiltradas.reduce((sum, v) => sum + (v.cambio_entregado || 0), 0))}
                 </div>
               </div>
               <div className="kpi-card blue">
                 <div className="kpi-label">Total Tarjetas</div>
                 <div className="kpi-value">
-                  {money(ventasGerencia.filter(v => v.metodo_pago.toLowerCase() === 'tarjeta').reduce((sum, v) => sum + v.total, 0))}
+                  {money(ventasFiltradas.filter(v => String(v.metodo_pago || '').toLowerCase() === 'tarjeta').reduce((sum, v) => sum + v.total, 0))}
                 </div>
               </div>
             </div>
 
-            <div className="inventory-table-wrapper" style={{ marginTop: '20px' }}>
+            <div className="sales-results-caption">
+              <span><strong>{ventasFiltradas.length}</strong> ventas encontradas</span>
+              <span>Mostrando máximo 12 registros por página</span>
+            </div>
+            <div className="inventory-table-wrapper sales-table-wrapper">
               <table className="inventory-table">
                 <thead>
                   <tr>
@@ -1786,10 +2504,10 @@ const cambiarEstadoEmpleado = async (emp) => {
                       </td>
                     </tr>
                   ))}
-                  {ventasGerencia.length === 0 && (
+                  {ventasFiltradas.length === 0 && (
                     <tr>
                       <td colSpan="7" className="table-empty">
-                        No hay ventas registradas en el sistema.
+                        {ventasGerencia.length === 0 ? 'Todavía no hay ventas registradas.' : 'No hay ventas que coincidan con los filtros seleccionados.'}
                       </td>
                     </tr>
                   )}
@@ -1797,7 +2515,7 @@ const cambiarEstadoEmpleado = async (emp) => {
               </table>
             </div>
 
-            {ventasGerencia.length > 0 && (
+            {ventasFiltradas.length > 0 && (
               <div className="pagination-controls sales-pagination" style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1809,8 +2527,8 @@ const cambiarEstadoEmpleado = async (emp) => {
               }}>
                 <span style={{ color: 'var(--text-muted, #777)', fontSize: '13px' }}>
                   Mostrando {(paginaVentasSegura - 1) * VENTAS_POR_PAGINA + 1}
-                  {'–'}{Math.min(paginaVentasSegura * VENTAS_POR_PAGINA, ventasGerencia.length)}
-                  {' '}de {ventasGerencia.length} ventas
+                  {'–'}{Math.min(paginaVentasSegura * VENTAS_POR_PAGINA, ventasFiltradas.length)}
+                  {' '}de {ventasFiltradas.length} ventas
                 </span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
@@ -1903,13 +2621,378 @@ const cambiarEstadoEmpleado = async (emp) => {
                   </div>
                   <div className="ticket-modal-footer">
                     <button type="button" onClick={() => setTicketSeleccionado(null)} className="btn-outline">Cerrar</button>
+                    <button type="button" onClick={imprimirTicketVenta} className="management-btn">▤ Imprimir ticket</button>
                   </div>
                 </section>
               </div>
             )}
           </div>
         )}
+{/* VISTA CONTABILIDAD */}
+{vistaActual === 'Contabilidad' && (
+  <div className="inventory-view accounting-purchases-view">
+    <div className="inventory-header"><div><h2 className="title">Contabilidad</h2><div className="subtitle">Resumen de ingresos, egresos y administración de gastos.</div></div><button type="button" className="management-btn" onClick={() => { cargarContabilidad(); cargarNominas(); }} disabled={cargandoContabilidad}>↻ Actualizar</button></div>
+    <section className="accounting-summary-grid">
+      <article className="accounting-summary-card income"><span>Ingresos por ventas</span><strong>{money(contabilidadData.resumen?.ingresos)}</strong></article>
+      <article className="accounting-summary-card expenses"><span>Egresos registrados</span><strong>{money(contabilidadData.resumen?.egresos)}</strong></article>
+      <article className="accounting-summary-card balance"><span>Balance acumulado</span><strong>{money(Number(contabilidadData.resumen?.ingresos || 0) - Number(contabilidadData.resumen?.egresos || 0))}</strong></article>
+    </section>
 
+    <section className="inventory-table-wrapper accounting-admin-card">
+      <div className="accounting-section-heading"><div><h3>Gastos adicionales</h3><p className="subtitle">Consulta, filtra e imprime gastos que no sean compras ni nóminas.</p></div><button type="button" className="btn-primary" onClick={() => setModalGastoExtra(true)}>＋ Registrar gasto</button></div>
+      <div className="accounting-date-toolbar"><div className="accounting-date-fields"><label>Desde<input type="date" value={fechaInicioGastos} onChange={e => setFechaInicioGastos(e.target.value)} /></label><label>Hasta<input type="date" value={fechaFinGastos} onChange={e => setFechaFinGastos(e.target.value)} /></label><button type="button" className="btn-primary" onClick={() => aplicarFiltroGastos(false)}>Filtrar</button><button type="button" className="btn-outline" onClick={() => {setFechaInicioGastos('');setFechaFinGastos('');aplicarFiltroGastos(true);}}>Todo el historial</button></div><button type="button" className="btn-outline" onClick={() => imprimirSeccionContable('gastos', gastosFiltrados.length, 'gastos')}>Imprimir gastos</button></div>
+      <div className="accounting-count">{gastosFiltrados.length} gastos encontrados</div>
+      <div className="table-responsive"><table className="inventory-table"><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Método</th><th>Importe</th><th>Detalle</th></tr></thead><tbody>
+        {gastosPaginaActual.map(g => <tr key={g.id_gasto}><td>{formatearFechaContable(g.fecha_gasto)}</td><td><strong>{g.concepto}</strong></td><td>{g.categoria}</td><td>{g.metodo_pago || '—'}</td><td><strong>{money(g.monto)}</strong></td><td><button type="button" className="btn-outline" onClick={() => setGastoDetalleAbierto(g)}>Ver detalle</button></td></tr>)}
+        {!gastosFiltrados.length && <tr><td colSpan="6" className="table-empty">No hay gastos adicionales en el periodo seleccionado.</td></tr>}
+      </tbody></table></div>
+      {gastosFiltrados.length > 12 && <div className="pagination-controls purchases-pagination"><button disabled={paginaGastosSegura===1} onClick={()=>setPaginaGastos(p=>Math.max(1,p-1))}>Anterior</button><span>Página {paginaGastosSegura} de {totalPaginasGastos} · {gastosPaginaActual.length} de {gastosFiltrados.length}</span><button disabled={paginaGastosSegura>=totalPaginasGastos} onClick={()=>setPaginaGastos(p=>Math.min(totalPaginasGastos,p+1))}>Siguiente</button></div>}
+    </section>
+
+    <section className="inventory-table-wrapper accounting-admin-card">
+      <div className="accounting-section-heading"><div><h3>Nóminas</h3><p className="subtitle">Configuración de sueldo mensual y pagos semanales recurrentes.</p></div><button type="button" className="btn-primary" onClick={() => { cargarEmpleados(); setModalNomina(true); }}>＋ Configurar nómina</button></div>
+      <div className="payroll-week-control"><label>Fecha de la semana a pagar<input type="date" value={fechaSemanaNomina} onChange={e => setFechaSemanaNomina(e.target.value)} /></label><span>Pago semanal = sueldo mensual × 12 ÷ 52</span></div>
+      <div className="table-responsive"><table className="inventory-table"><thead><tr><th>Empleado</th><th>Sueldo mensual</th><th>Pago semanal</th><th>Estado</th><th>Acción</th></tr></thead><tbody>
+        {nominasPaginaActual.map(n => { const pagada = pagosNomina.some(p => Number(p.id_nomina) === Number(n.id_nomina) && String(p.semana_inicio).slice(0,10) === obtenerInicioSemana(fechaSemanaNomina)); return <tr key={n.id_nomina}><td><strong>{n.nombre}</strong></td><td>{money(n.sueldo_mensual)}</td><td>{money(n.pago_semanal)}</td><td>{pagada ? <span className="payroll-paid">Pagada esta semana</span> : 'Pendiente'}</td><td><button type="button" className="btn-outline" disabled={pagada || guardandoContable} onClick={() => registrarPagoNomina(n)}>{pagada ? 'Registrado' : 'Registrar pago'}</button></td></tr>; })}
+        {!nominas.length && <tr><td colSpan="5" className="table-empty">Aún no hay nóminas configuradas.</td></tr>}
+      </tbody></table></div>
+      {nominas.length > 12 && <div className="pagination-controls purchases-pagination"><button disabled={paginaNominasSegura===1} onClick={()=>setPaginaNominas(p=>Math.max(1,p-1))}>Anterior</button><span>Página {paginaNominasSegura} de {totalPaginasNominas} · {nominasPaginaActual.length} de {nominas.length}</span><button disabled={paginaNominasSegura>=totalPaginasNominas} onClick={()=>setPaginaNominas(p=>Math.min(totalPaginasNominas,p+1))}>Siguiente</button></div>}
+      <div className="accounting-subheading"><div><h4>Historial de pagos de nómina</h4><p className="subtitle">Filtra e imprime los pagos semanales registrados.</p></div></div>
+      <div className="accounting-date-toolbar"><div className="accounting-date-fields"><label>Desde<input type="date" value={fechaInicioPagos} onChange={e=>setFechaInicioPagos(e.target.value)} /></label><label>Hasta<input type="date" value={fechaFinPagos} onChange={e=>setFechaFinPagos(e.target.value)} /></label><button type="button" className="btn-primary" onClick={()=>aplicarFiltroPagos(false)}>Filtrar</button><button type="button" className="btn-outline" onClick={()=>{setFechaInicioPagos('');setFechaFinPagos('');aplicarFiltroPagos(true);}}>Todo el historial</button></div><button type="button" className="btn-outline" onClick={()=>imprimirSeccionContable('nominas',pagosFiltrados.length,'pagos de nómina')}>Imprimir nóminas</button></div>
+      <div className="accounting-count">{pagosFiltrados.length} pagos encontrados</div>
+      <div className="table-responsive"><table className="inventory-table"><thead><tr><th>Fecha de pago</th><th>Empleado</th><th>Semana correspondiente</th><th>Método</th><th>Importe</th><th>Detalle</th></tr></thead><tbody>
+        {pagosPaginaActual.map(p=><tr key={p.id_pago_nomina}><td>{formatearFechaContable(p.fecha_pago)}</td><td><strong>{p.nombre}</strong></td><td>{formatearFechaContable(p.semana_inicio)}</td><td>{p.metodo_pago || '—'}</td><td><strong>{money(p.monto)}</strong></td><td><button type="button" className="btn-outline" onClick={()=>setPagoDetalleAbierto(p)}>Ver detalle</button></td></tr>)}
+        {!pagosFiltrados.length && <tr><td colSpan="6" className="table-empty">No hay pagos de nómina en el periodo seleccionado.</td></tr>}
+      </tbody></table></div>
+      {pagosFiltrados.length > 12 && <div className="pagination-controls purchases-pagination"><button disabled={paginaPagosSegura===1} onClick={()=>setPaginaPagos(p=>Math.max(1,p-1))}>Anterior</button><span>Página {paginaPagosSegura} de {totalPaginasPagos} · {pagosPaginaActual.length} de {pagosFiltrados.length}</span><button disabled={paginaPagosSegura>=totalPaginasPagos} onClick={()=>setPaginaPagos(p=>Math.min(totalPaginasPagos,p+1))}>Siguiente</button></div>}
+    </section>
+
+    {modalGastoExtra && <div className="purchase-ticket-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setModalGastoExtra(false);}}><form className="accounting-form-modal" onSubmit={guardarGastoExtra}><div className="purchase-ticket-actions"><h3>Registrar gasto adicional</h3><button type="button" className="btn-outline" onClick={()=>setModalGastoExtra(false)}>Cerrar ×</button></div><label>Concepto<input required value={formGastoExtra.concepto} onChange={e=>setFormGastoExtra({...formGastoExtra,concepto:e.target.value})} placeholder="Ej. Transporte" /></label><label>Categoría<select value={formGastoExtra.categoria} onChange={e=>setFormGastoExtra({...formGastoExtra,categoria:e.target.value})}><option>Transporte</option><option>Mantenimiento</option><option>Servicios</option><option>Limpieza</option><option>Otros</option></select></label><label>Importe<input required type="number" min="0.01" step="0.01" value={formGastoExtra.monto} onChange={e=>setFormGastoExtra({...formGastoExtra,monto:e.target.value})} /></label><label>Fecha<input required type="date" value={formGastoExtra.fecha_gasto} onChange={e=>setFormGastoExtra({...formGastoExtra,fecha_gasto:e.target.value})} /></label><label>Método de pago<select value={formGastoExtra.metodo_pago} onChange={e=>setFormGastoExtra({...formGastoExtra,metodo_pago:e.target.value})}><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></label><label>Observaciones<textarea value={formGastoExtra.observaciones} onChange={e=>setFormGastoExtra({...formGastoExtra,observaciones:e.target.value})} /></label><div className="modal-actions"><button type="button" className="btn-outline" onClick={()=>setModalGastoExtra(false)}>Cancelar</button><button className="btn-primary" type="submit" disabled={guardandoContable}>{guardandoContable?'Guardando...':'Guardar gasto'}</button></div></form></div>}
+    {modalNomina && <div className="purchase-ticket-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setModalNomina(false);}}><form className="accounting-form-modal" onSubmit={guardarConfiguracionNomina}><div className="purchase-ticket-actions"><h3>Configurar nómina semanal</h3><button type="button" className="btn-outline" onClick={()=>setModalNomina(false)}>Cerrar ×</button></div><label>Empleado<select required value={formNomina.id_empleado} onChange={e=>setFormNomina({...formNomina,id_empleado:e.target.value})}><option value="">Selecciona un empleado</option>{empleados.filter(e=>!e.estado||e.estado.toLowerCase()==='activo').map(e=><option key={e.id_empleado} value={e.id_empleado}>{e.nombre}</option>)}</select></label><label>Sueldo mensual (MXN)<input required type="number" min="0.01" step="0.01" value={formNomina.sueldo_mensual} onChange={e=>setFormNomina({...formNomina,sueldo_mensual:e.target.value})} /></label>{Number(formNomina.sueldo_mensual)>0&&<p className="accounting-mini-note">Pago semanal calculado: <strong>{money(Number(formNomina.sueldo_mensual)*12/52)}</strong></p>}<div className="modal-actions"><button type="button" className="btn-outline" onClick={()=>setModalNomina(false)}>Cancelar</button><button className="btn-primary" type="submit" disabled={guardandoContable}>{guardandoContable?'Guardando...':'Guardar nómina'}</button></div></form></div>}
+    {gastoDetalleAbierto && <div className="purchase-ticket-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setGastoDetalleAbierto(null);}}><section className="accounting-detail-modal" role="dialog" aria-modal="true"><div className="purchase-ticket-actions"><h3>Detalle del gasto</h3><button className="btn-outline" onClick={()=>setGastoDetalleAbierto(null)}>Cerrar ×</button></div><dl><dt>Concepto</dt><dd>{gastoDetalleAbierto.concepto}</dd><dt>Categoría</dt><dd>{gastoDetalleAbierto.categoria}</dd><dt>Fecha</dt><dd>{formatearFechaContable(gastoDetalleAbierto.fecha_gasto)}</dd><dt>Método de pago</dt><dd>{gastoDetalleAbierto.metodo_pago||'—'}</dd><dt>Importe</dt><dd>{money(gastoDetalleAbierto.monto)}</dd><dt>Observaciones</dt><dd>{gastoDetalleAbierto.observaciones||'Sin observaciones'}</dd></dl></section></div>}
+    {pagoDetalleAbierto && <div className="purchase-ticket-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPagoDetalleAbierto(null);}}><section className="accounting-detail-modal" role="dialog" aria-modal="true"><div className="purchase-ticket-actions"><h3>Detalle del pago de nómina</h3><button className="btn-outline" onClick={()=>setPagoDetalleAbierto(null)}>Cerrar ×</button></div><dl><dt>Empleado</dt><dd>{pagoDetalleAbierto.nombre}</dd><dt>Fecha de pago</dt><dd>{formatearFechaContable(pagoDetalleAbierto.fecha_pago)}</dd><dt>Semana correspondiente</dt><dd>{formatearFechaContable(pagoDetalleAbierto.semana_inicio)}</dd><dt>Método de pago</dt><dd>{pagoDetalleAbierto.metodo_pago||'—'}</dd><dt>Importe</dt><dd>{money(pagoDetalleAbierto.monto)}</dd></dl></section></div>}
+    {confirmacionContable && <div className="purchase-ticket-overlay"><section className="accounting-detail-modal" role="dialog" aria-modal="true"><h3>{confirmacionContable.titulo}</h3><p>{confirmacionContable.texto}</p><div className="modal-actions"><button className="btn-outline" onClick={()=>setConfirmacionContable(null)}>Cancelar</button><button className="btn-primary" onClick={confirmacionContable.confirmar}>Confirmar pago</button></div></section></div>}
+    {avisoContable && <div className="purchase-ticket-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setAvisoContable(null);}}><section className="accounting-detail-modal accounting-notice" role="dialog" aria-modal="true"><div className={`accounting-notice-icon ${avisoContable.tipo}`}>{avisoContable.tipo==='success'?'✓':avisoContable.tipo==='error'?'!':'i'}</div><h3>{avisoContable.titulo}</h3><p>{avisoContable.texto}</p><div className="modal-actions"><button className="btn-primary" onClick={()=>setAvisoContable(null)}>Aceptar</button></div></section></div>}
+
+    <section className="inventory-table-wrapper purchases-history-card">
+      <div className="purchases-history-heading">
+        <div>
+          <h3>Historial de compras a proveedores</h3>
+          <p className="subtitle">Selecciona un periodo o consulta todas las compras. Puedes abrir cada ticket aquí mismo.</p>
+        </div>
+        <div className="purchases-filter">
+          <label>Desde
+            <input type="date" value={fechaInicioCompras} onChange={e => setFechaInicioCompras(e.target.value)} />
+          </label>
+          <label>Hasta
+            <input type="date" value={fechaFinCompras} onChange={e => setFechaFinCompras(e.target.value)} />
+          </label>
+          <button type="button" className="btn-primary" onClick={() => aplicarFiltroCompras(false)}>Aplicar filtro</button>
+          <button type="button" className="btn-outline" onClick={() => { setFechaInicioCompras(''); setFechaFinCompras(''); aplicarFiltroCompras(true); }}>Todas las fechas</button>
+        </div>
+      </div>
+
+      <div className="purchases-toolbar">
+        <span>{comprasFiltradas.length} {comprasFiltradas.length === 1 ? 'compra encontrada' : 'compras encontradas'}</span>
+        <button type="button" className="btn-outline" onClick={imprimirComprasFiltradas} disabled={cargandoContabilidad || !comprasFiltradas.length}>
+          Imprimir compras {periodoComprasAplicado.inicio || periodoComprasAplicado.fin ? 'del filtro' : ' (todas)'}
+        </button>
+      </div>
+
+      <div style={{overflowX:'auto'}}>
+        <table className="inventory-table">
+          <thead><tr><th>Folio</th><th>Fecha</th><th>Proveedor</th><th>Artículos</th><th>Método de pago</th><th>Total</th><th>Ticket</th></tr></thead>
+          <tbody>
+            {cargandoContabilidad ? (
+              <tr><td colSpan="7" className="table-empty">Cargando historial de compras...</td></tr>
+            ) : comprasPaginaActual.map(compra => (
+              <tr key={compra.id_compra}>
+                <td><strong>CP-{compra.id_compra}</strong></td>
+                <td>{formatearFechaContable(compra.fecha_compra)}</td>
+                <td>{compra.proveedor}</td>
+                <td>{(compra.detalles || []).length}</td>
+                <td>{compra.metodo_pago}</td>
+                <td><strong>{money(Number(compra.total))}</strong></td>
+                <td><button type="button" className="btn-outline" onClick={() => setCompraTicketAbierta(compra)}>Ver ticket</button></td>
+              </tr>
+            ))}
+            {!cargandoContabilidad && !comprasFiltradas.length && (
+              <tr><td colSpan="7" className="table-empty">No hay compras registradas en las fechas seleccionadas.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {comprasFiltradas.length > COMPRAS_POR_PAGINA && (
+        <div className="pagination-controls purchases-pagination">
+          <button type="button" disabled={paginaComprasSegura === 1} onClick={() => setPaginaCompras(p => Math.max(1, p - 1))}>Anterior</button>
+          <span>Página {paginaComprasSegura} de {totalPaginasCompras} · mostrando {comprasPaginaActual.length} de {comprasFiltradas.length} compras</span>
+          <button type="button" disabled={paginaComprasSegura >= totalPaginasCompras} onClick={() => setPaginaCompras(p => Math.min(totalPaginasCompras, p + 1))}>Siguiente</button>
+        </div>
+      )}
+    </section>
+
+    {compraTicketAbierta && (
+      <div className="purchase-ticket-overlay" onMouseDown={e => { if (e.target === e.currentTarget) setCompraTicketAbierta(null); }}>
+        <section className="purchase-ticket-modal" role="dialog" aria-modal="true" aria-label={`Ticket de compra CP-${compraTicketAbierta.id_compra}`}>
+          <div className="purchase-ticket-actions">
+            <span>Detalle de compra</span>
+            <button type="button" className="btn-outline" onClick={() => setCompraTicketAbierta(null)}>Cerrar ×</button>
+          </div>
+          <div className="purchase-ticket-paper">
+            <header className="purchase-ticket-header">
+              <div><h2>CAFETERÍA ORIGEN</h2><strong>Ticket de compra CP-{compraTicketAbierta.id_compra}</strong><div>Proveedor: {compraTicketAbierta.proveedor}</div></div>
+              <div><div>Fecha: {formatearFechaContable(compraTicketAbierta.fecha_compra)}</div><div>Método: {compraTicketAbierta.metodo_pago}</div><div>Estado: {compraTicketAbierta.estado || 'Recibida'}</div></div>
+            </header>
+            <div className="purchase-ticket-table-wrap">
+              <table className="inventory-table">
+                <thead><tr><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+                <tbody>
+                  {(compraTicketAbierta.detalles || []).map((detalle, i) => (
+                    <tr key={detalle.id_detalle_compra || i}>
+                      <td><strong>{detalle.nombre_articulo}</strong></td>
+                      <td>{detalle.tipo_articulo === 'insumo' ? 'Insumo' : 'Producto'}</td>
+                      <td>{Number(detalle.cantidad)} {detalle.unidad || ''}</td>
+                      <td>{money(Number(detalle.precio_unitario))}</td>
+                      <td><strong>{money(Number(detalle.subtotal))}</strong></td>
+                    </tr>
+                  ))}
+                  {!(compraTicketAbierta.detalles || []).length && <tr><td colSpan="5" className="table-empty">Esta compra no tiene artículos detallados.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            {compraTicketAbierta.observaciones && <p className="purchase-ticket-notes"><strong>Observaciones:</strong> {compraTicketAbierta.observaciones}</p>}
+            <div className="purchase-ticket-total">TOTAL: {money(Number(compraTicketAbierta.total))}</div>
+          </div>
+        </section>
+      </div>
+    )}
+
+    {/* Área exclusiva de impresión: incluye todas las compras del filtro, sin paginación. */}
+    <section className="purchases-print-area" aria-label="Compras para impresión">
+      <header className="purchases-print-header">
+        <h1>CAFETERÍA ORIGEN</h1>
+        <h2>HISTORIAL DE COMPRAS A PROVEEDORES</h2>
+        <p>Periodo: {periodoComprasAplicado.inicio || periodoComprasAplicado.fin
+          ? `${periodoComprasAplicado.inicio || 'Inicio del historial'} al ${periodoComprasAplicado.fin || 'Fecha más reciente'}`
+          : 'Todas las fechas'}</p>
+        <p>Fecha de impresión: {new Date().toLocaleString('es-MX')}</p>
+      </header>
+      {comprasFiltradas.map(compra => (
+        <article className="purchase-print-ticket" key={`print-${compra.id_compra}`}>
+          <div className="purchase-print-ticket-head">
+            <div><h3>Ticket CP-{compra.id_compra}</h3><strong>{compra.proveedor}</strong></div>
+            <div>Fecha: {formatearFechaContable(compra.fecha_compra)}<br/>Pago: {compra.metodo_pago}<br/>Estado: {compra.estado || 'Recibida'}</div>
+          </div>
+          <table className="purchase-print-table">
+            <thead><tr><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+            <tbody>{(compra.detalles || []).map((d, i) => (
+              <tr key={d.id_detalle_compra || i}><td>{d.nombre_articulo}</td><td>{d.tipo_articulo === 'insumo' ? 'Insumo' : 'Producto'}</td><td>{Number(d.cantidad)} {d.unidad || ''}</td><td>{money(Number(d.precio_unitario))}</td><td>{money(Number(d.subtotal))}</td></tr>
+            ))}</tbody>
+          </table>
+          {compra.observaciones && <p>Observaciones: {compra.observaciones}</p>}
+          <div className="purchase-print-total">TOTAL: {money(Number(compra.total))}</div>
+        </article>
+      ))}
+    </section>
+  </div>
+)}
+
+    <section className="accounting-print-area accounting-gastos-print"><h1>CAFETERÍA ORIGEN</h1><h2>HISTORIAL DE GASTOS ADICIONALES</h2><p>Periodo: {periodoGastosAplicado.inicio||periodoGastosAplicado.fin?`${periodoGastosAplicado.inicio||'Inicio'} al ${periodoGastosAplicado.fin||'Fecha reciente'}`:'Todo el historial'}</p><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th>Método</th><th>Importe</th><th>Observaciones</th></tr></thead><tbody>{gastosFiltrados.map(g=><tr key={`pg-${g.id_gasto}`}><td>{formatearFechaContable(g.fecha_gasto)}</td><td>{g.concepto}</td><td>{g.categoria}</td><td>{g.metodo_pago||'—'}</td><td>{money(g.monto)}</td><td>{g.observaciones||'—'}</td></tr>)}</tbody></table><strong>Total: {money(gastosFiltrados.reduce((a,g)=>a+Number(g.monto||0),0))}</strong></section>
+    <section className="accounting-print-area accounting-nominas-print"><h1>CAFETERÍA ORIGEN</h1><h2>HISTORIAL DE PAGOS DE NÓMINA</h2><p>Periodo: {periodoPagosAplicado.inicio||periodoPagosAplicado.fin?`${periodoPagosAplicado.inicio||'Inicio'} al ${periodoPagosAplicado.fin||'Fecha reciente'}`:'Todo el historial'}</p><table><thead><tr><th>Fecha de pago</th><th>Empleado</th><th>Semana</th><th>Método</th><th>Importe</th></tr></thead><tbody>{pagosFiltrados.map(p=><tr key={`pn-${p.id_pago_nomina}`}><td>{formatearFechaContable(p.fecha_pago)}</td><td>{p.nombre}</td><td>{formatearFechaContable(p.semana_inicio)}</td><td>{p.metodo_pago||'—'}</td><td>{money(p.monto)}</td></tr>)}</tbody></table><strong>Total: {money(pagosFiltrados.reduce((a,p)=>a+Number(p.monto||0),0))}</strong></section>
+
+{/* VISTA PANEL DE REPORTES Y ESTADÍSTICAS */}
+{vistaActual === 'reportes' && (
+  <div className="inventory-view">
+    {reportesData && (
+      <section className="report-print-area" aria-label="Reporte administrativo para impresión">
+        <header className="report-print-header">
+          <div><h1>CAFETERÍA ORIGEN</h1><p>REPORTE ADMINISTRATIVO DE VENTAS</p></div>
+          <div className="report-print-meta">
+            <span>Fecha de generación: {new Date().toLocaleString('es-MX')}</span>
+            <span>Generado por: {usuario?.nombre || usuario?.username || 'Administrador'}</span>
+            <span>Periodo: {periodoAplicadoReportes.inicio || periodoAplicadoReportes.fin ? `${periodoAplicadoReportes.inicio || 'Primera venta'} al ${periodoAplicadoReportes.fin || 'Hoy'}` : 'Todo el historial'}</span>
+          </div>
+        </header>
+        <h2>Resumen financiero</h2>
+        <div className="report-print-kpis">
+          <div><span>Ingresos totales</span><strong>{money(reportesData.resumen.total_ingresos)}</strong></div>
+          <div><span>Ventas realizadas</span><strong>{reportesData.resumen.total_ventas}</strong></div>
+          <div><span>Ticket promedio</span><strong>{money(reportesData.resumen.ticket_promedio)}</strong></div>
+          <div><span>Ingresos en efectivo</span><strong>{money(reportesData.resumen.ingresos_efectivo)}</strong></div>
+          <div><span>Ingresos con tarjeta</span><strong>{money(reportesData.resumen.ingresos_tarjeta)}</strong></div>
+        </div>
+        <h2>Productos más vendidos</h2>
+        <table className="report-print-table"><thead><tr><th>Producto</th><th>Categoría</th><th>Unidades</th><th>Importe recaudado</th></tr></thead>
+          <tbody>
+            {reportesData.top_productos.map((prod, idx) => <tr key={`print-prod-${idx}`}><td>{prod.nombre}</td><td>{prod.categoria}</td><td>{prod.total_unidades}</td><td>{money(prod.total_recaudado)}</td></tr>)}
+            {reportesData.top_productos.length === 0 && <tr><td colSpan="4">No hay ventas registradas.</td></tr>}
+          </tbody>
+        </table>
+        <h2>Ventas por categoría</h2>
+        <table className="report-print-table"><thead><tr><th>Categoría</th><th>Unidades vendidas</th><th>Importe total</th></tr></thead>
+          <tbody>
+            {reportesData.ventas_categoria.map((cat, idx) => <tr key={`print-cat-${idx}`}><td>{cat.categoria}</td><td>{cat.unidades}</td><td>{money(cat.total)}</td></tr>)}
+            {reportesData.ventas_categoria.length === 0 && <tr><td colSpan="3">Sin datos de categorías.</td></tr>}
+          </tbody>
+        </table>
+        <footer className="report-print-footer">Documento generado desde el sistema de punto de venta de Cafetería Origen.</footer>
+      </section>
+    )}
+    <div className="inventory-header no-print">
+      <div>
+        <h2 className="title">Panel de Reportes e Indicadores</h2>
+        <div className="subtitle">Análisis estadístico de ventas, productos populares e ingresos</div>
+      </div>
+      <div className="report-actions no-print" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+        <button type="button" className="management-btn" onClick={cargarReportes} disabled={cargandoReportes} style={{ padding: '8px 14px' }}>
+          {cargandoReportes ? 'Actualizando…' : '🔄 Actualizar Datos'}
+        </button>
+        <button type="button" className="management-btn report-print-button" onClick={imprimirReportes} disabled={!reportesData || cargandoReportes} style={{ padding: '8px 14px' }}>
+          🖨️ Imprimir reporte
+        </button>
+      </div>
+    </div>
+
+    <section className="no-print" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px 18px', margin: '18px 0', display: 'flex', gap: '14px', alignItems: 'end', flexWrap: 'wrap' }}>
+      <div style={{ minWidth: '180px', flex: '1' }}>
+        <label htmlFor="reporte-fecha-inicio" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Desde</label>
+        <input id="reporte-fecha-inicio" type="date" value={fechaInicioReportes} max={fechaHoyReportes} onChange={e => setFechaInicioReportes(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '7px' }} />
+      </div>
+      <div style={{ minWidth: '180px', flex: '1' }}>
+        <label htmlFor="reporte-fecha-fin" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Hasta</label>
+        <input id="reporte-fecha-fin" type="date" value={fechaFinReportes} min={fechaInicioReportes || undefined} max={fechaHoyReportes} onChange={e => setFechaFinReportes(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '7px' }} />
+      </div>
+      <button type="button" className="management-btn" onClick={() => cargarReportes()} disabled={cargandoReportes} style={{ padding: '10px 16px' }}>{cargandoReportes ? 'Filtrando…' : 'Aplicar filtro'}</button>
+      <button type="button" className="btn-outline" onClick={() => { setFechaInicioReportes(''); setFechaFinReportes(''); cargarReportes({ todo: true }); }} disabled={cargandoReportes} style={{ padding: '10px 16px' }}>Todo el historial</button>
+      <div style={{ width: '100%', fontSize: '12px', color: '#6b7280' }}>Solo se mostrarán ventas realizadas dentro del periodo seleccionado. No se permiten fechas posteriores a hoy.</div>
+    </section>
+
+    {errorReportes && (
+      <div className="no-print" role="alert" style={{ margin: '16px 0', padding: '12px 16px', borderRadius: '8px', background: '#f7e4e1', color: '#934c43' }}>
+        {errorReportes}
+      </div>
+    )}
+
+    <div className="no-print">
+    {reportesData ? (
+      <>
+        {/* TARJETAS DE INDICADORES CLAVE (KPIs) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', margin: '20px 0' }}>
+          <div style={{ background: '#fff', padding: '18px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: 'bold' }}>INGRESOS TOTALES</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#111827', marginTop: '6px' }}>
+              {money(reportesData.resumen.total_ingresos)}
+            </div>
+            <div style={{ fontSize: '12px', color: '#10b981', marginTop: '4px' }}>Ventas acumuladas</div>
+          </div>
+
+          <div style={{ background: '#fff', padding: '18px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: 'bold' }}>ORDENES / TICKETS</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#2563eb', marginTop: '6px' }}>
+              {reportesData.resumen.total_ventas}
+            </div>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Transacciones realizadas</div>
+          </div>
+
+          <div style={{ background: '#fff', padding: '18px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: 'bold' }}>TICKET PROMEDIO</div>
+            <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#d97706', marginTop: '6px' }}>
+              {money(reportesData.resumen.ticket_promedio)}
+            </div>
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>Consumo prom. por cliente</div>
+          </div>
+
+          <div style={{ background: '#fff', padding: '18px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: 'bold' }}>MÉTODO PREFERIDO</div>
+            <div style={{ fontSize: '14px', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>💵 Efectivo:</span> <strong>{money(reportesData.resumen.ingresos_efectivo)}</strong>
+            </div>
+            <div style={{ fontSize: '14px', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
+              <span>💳 Tarjeta:</span> <strong>{money(reportesData.resumen.ingresos_tarjeta)}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* SECCIÓN DOS COLUMNAS: TOP PRODUCTOS Y VENTAS POR CATEGORÍA */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
+          
+          {/* TABLA DE TOP 5 PRODUCTOS MÁS VENDIDOS */}
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
+              ⭐ Top 5 Productos Más Vendidos
+            </h3>
+            <table className="inventory-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>PRODUCTO</th>
+                  <th>CATEGORÍA</th>
+                  <th>UNID.</th>
+                  <th>RECAUDADO</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportesData.top_productos.map((prod, idx) => (
+                  <tr key={idx}>
+                    <td><strong>{prod.nombre}</strong></td>
+                    <td>{prod.categoria}</td>
+                    <td><span style={{ fontWeight: 'bold', color: '#2563eb' }}>{prod.total_unidades}</span></td>
+                    <td><strong>{money(prod.total_recaudado)}</strong></td>
+                  </tr>
+                ))}
+                {reportesData.top_productos.length === 0 && (
+                  <tr><td colSpan="4" style={{ textAlign: 'center', padding: '15px' }}>No hay ventas registradas.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* DISTRIBUCIÓN POR CATEGORÍAS */}
+          <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+            <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
+              📊 Ventas por Categoría
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {reportesData.ventas_categoria.map((cat, idx) => {
+                const maxTotal = reportesData.ventas_categoria[0]?.total || 1;
+                const porcentaje = Math.round((cat.total / maxTotal) * 100);
+
+                return (
+                  <div key={idx}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                      <span><strong>{cat.categoria}</strong> ({cat.unidades} unid.)</span>
+                      <strong>{money(cat.total)}</strong>
+                    </div>
+                    <div style={{ width: '100%', background: '#f3f4f6', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
+                      <div 
+                        style={{ 
+                          width: `${porcentaje}%`, 
+                          background: '#3b82f6', 
+                          height: '100%', 
+                          borderRadius: '5px',
+                          transition: 'width 0.4s ease'
+                        }} 
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {reportesData.ventas_categoria.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '15px', color: '#6b7280' }}>Sin datos de categorías.</div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </>
+    ) : (
+      <div style={{ padding: '40px', textAlign: 'center', color: '#6b7280' }}>
+        {cargandoReportes ? 'Cargando estadísticas del sistema…' : (errorReportes || 'No hay datos de reportes para mostrar. Usa “Actualizar Datos” para intentarlo nuevamente.')}
+      </div>
+    )}
+    </div>
+  </div>
+)}
       </div>
 
       {/* MODALES FLOTANTES */}
@@ -1968,7 +3051,8 @@ const cambiarEstadoEmpleado = async (emp) => {
 
       {/* MODAL PERSONALIZAR PRODUCTO */}
       {productoPersonalizando && (() => {
-        const tamanosProducto = Array.isArray(productoPersonalizando.tamanos) ? productoPersonalizando.tamanos : [];
+        const tamanosProducto = (Array.isArray(productoPersonalizando.tamanos) ? productoPersonalizando.tamanos : [])
+          .filter(t => /oz/i.test(String(t.nombre || '')));
         const listaExtras = Array.isArray(productoPersonalizando.extras) ? productoPersonalizando.extras : [];
         const toggleExtra = (extra) => {
           setExtrasSeleccionados(prev => {
