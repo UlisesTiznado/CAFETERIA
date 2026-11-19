@@ -3909,8 +3909,10 @@ body {
   font-weight: 700;
 }
 .employee-country-code input {
+  flex: 0 0 42px !important;
   width: 42px !important;
-  min-width: 0;
+  min-width: 42px;
+  max-width: 42px;
   height: 48px;
   padding: 0 !important;
   border: 0 !important;
@@ -3921,6 +3923,188 @@ body {
   font: inherit;
 }
 .employee-phone-input > input {
-  flex: 1;
+  flex: 1 1 auto !important;
+  width: 0;
   min-width: 0;
 }
+.employee-phone-input .employee-country-code {
+  flex: 0 0 96px;
+  min-width: 96px;
+  max-width: 96px;
+}
+.employee-phone-input {
+  width: 100%;
+  min-width: 0;
+}
+
+
+
+/* ==========================================================
+   PROVEEDORES · formularios y confirmaciones con identidad visual
+========================================================== */
+.supplier-modal-overlay { z-index: 12000 !important; }
+.supplier-confirm-overlay { z-index: 12010 !important; }
+.supplier-message-overlay { z-index: 12020 !important; }
+.supplier-form-modal {
+  width: min(100%, 520px);
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: var(--r-xl);
+  padding: 26px;
+  background: var(--cream-50);
+  box-shadow: var(--shadow-lg);
+}
+.supplier-form-modal .cash-field { margin-bottom: 16px; }
+.supplier-form-modal .cash-field input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 13px;
+  color: var(--ink-strong);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.supplier-form-modal .cash-field input:focus {
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 3px rgba(79,124,172,.13);
+}
+.supplier-phone-wrap {
+  display: grid;
+  grid-template-columns: 22px 86px minmax(0,1fr);
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-height: 48px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.supplier-phone-wrap:focus-within {
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 3px rgba(79,124,172,.13);
+}
+.supplier-phone-wrap .supplier-lada-prefix {
+  padding-left: 12px;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+.supplier-phone-wrap input,
+.supplier-form-modal .supplier-phone-wrap input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 15px;
+}
+.supplier-phone-wrap .supplier-lada-input {
+  border-right: 1px solid var(--line) !important;
+  text-align: center;
+  font-weight: 800 !important;
+}
+.supplier-form-modal .cash-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-mute);
+  font-size: 11px;
+}
+.supplier-form-modal .modal-actions,
+.supplier-modal-overlay .modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.supplier-modal-overlay .modal-danger {
+  min-height: 42px;
+  padding: 0 18px;
+  color: #fff;
+  background: linear-gradient(135deg, #a84f45, #873b34);
+  border: 1px solid #873b34;
+  border-radius: 999px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(135,59,52,.2);
+}
+.supplier-modal-overlay .modal-danger:hover { filter: brightness(.95); transform: translateY(-1px); }
+.supplier-delete-btn {
+  color: var(--bad) !important;
+  border-color: #e8c9c4 !important;
+  background: #fff8f6 !important;
+}
+.supplier-delete-btn:hover {
+  color: #fff !important;
+  background: var(--bad) !important;
+  border-color: var(--bad) !important;
+}
+@media (max-width: 600px) {
+  .supplier-form-modal { padding: 20px 16px; }
+  .supplier-form-modal .modal-actions { flex-direction: column-reverse; }
+  .supplier-form-modal .modal-actions button { width: 100%; }
+}
+
+
+/* Reporte de impresión de ventas: permanece oculto en pantalla. */
+.sales-print-only { display:none; }
+.sales-print-record { margin: 14px 0 18px; padding: 10px 0; border-bottom: 1px solid #bbb; break-inside: avoid; }
+.sales-print-record-heading { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:center; margin-bottom:6px; font-size:10pt; }
+.sales-print-detail-table { width:100%; border-collapse:collapse; font-size:9pt; }
+.sales-print-detail-table th, .sales-print-detail-table td { padding:5px 7px; border:1px solid #ccc; text-align:left; }
+.sales-print-detail-table th { background:#f1f1f1 !important; }
+.sales-print-record-total { margin-top:6px; text-align:right; font-size:9pt; font-weight:700; }
+@media print {
+  body.printing-sales-history .sales-table-wrapper,
+  body.printing-sales-history .sales-results-caption,
+  body.printing-sales-history .kpi-grid,
+  body.printing-sales-history .sales-pagination { display:none !important; }
+  body.printing-sales-history .sales-print-only { display:block !important; }
+  body.printing-sales-history .sales-print-only h2 { margin:0 0 8px; font-size:18pt; }
+  body.printing-sales-history .sales-print-only > p { margin:3px 0; font-size:10pt; }
+  body.printing-sales-history .sales-print-record { page-break-inside:avoid; }
+  body.printing-sales-history .sales-print-detail-table tr { page-break-inside:avoid; }
+}
+
+
+/* Impresión de historial de ventas: el documento separado contiene todos los registros
+   seleccionados, no solamente los 12 de la página visible. */
+@media print {
+  body.printing-sales-history .sales-print-only { display:block !important; }
+  body.printing-sales-history .sales-header-actions,
+  body.printing-sales-history .sales-filters-panel,
+  body.printing-sales-history .sales-table-wrapper,
+  body.printing-sales-history .sales-results-caption,
+  body.printing-sales-history .kpi-grid,
+  body.printing-sales-history .sales-pagination { display:none !important; }
+  body.printing-sales-history .sales-print-record { break-inside:avoid; page-break-inside:avoid; }
+  body.printing-sales-history .sales-print-detail-table tr { break-inside:avoid; page-break-inside:avoid; }
+}
+
+
+/* Confirmación segura para activar/desactivar empleados */
+.employee-status-modal { width: min(92vw, 470px); text-align: center; }
+.employee-status-password { margin: 20px 0 8px; text-align: left; }
+.employee-status-password label { display: block; margin-bottom: 7px; color: var(--ink-soft); font-size: 12px; font-weight: 800; }
+.employee-status-password input { width: 100%; min-height: 46px; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-md); background: #fff; color: var(--ink); }
+.employee-status-password small { display: block; margin-top: 7px; color: var(--ink-mute); font-size: 11px; line-height: 1.45; }
+.employee-status-modal .modal-actions { justify-content: center; flex-wrap: wrap; }
+
+
+/* Confirmación de estado de proveedores: mismo estilo que Empleados */
+.supplier-status-modal { width: min(92vw, 470px); text-align: center; }
+.supplier-status-modal .employee-status-password { margin-top: 20px; }
+
+
+/* Filtros de estado para Empleados y Proveedores */
+.status-filter-group { display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:flex-end; }
+.status-filter-label { display:flex; align-items:center; gap:8px; color:var(--ink-mute); font-size:12px; font-weight:700; white-space:nowrap; }
+.status-filter-select { min-height:40px; min-width:132px; padding:8px 34px 8px 11px; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; color:var(--ink); font:inherit; cursor:pointer; }
+.status-filter-select:focus { border-color:var(--blue-500); outline:3px solid rgba(79,124,172,.16); }
+@media (max-width: 720px) { .status-filter-group { width:100%; justify-content:stretch; } .status-filter-group .suppliers-search { flex:1; min-width:100% !important; } .status-filter-label { width:100%; justify-content:space-between; } .status-filter-label .status-filter-select { flex:1; } }

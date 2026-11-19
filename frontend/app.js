@@ -76,22 +76,23 @@ function App() {
   const [fechaInicioVentas, setFechaInicioVentas] = useState('');
   const [fechaFinVentas, setFechaFinVentas] = useState('');
   const [ticketSeleccionado, setTicketSeleccionado] = useState(null);
+  const [ventasParaImprimir, setVentasParaImprimir] = useState(null);
+  const [tituloImpresionVentas, setTituloImpresionVentas] = useState('Historial de ventas');
 
   // Administración de proveedores
   const [proveedores, setProveedores] = useState([]);
   const [cargandoProveedores, setCargandoProveedores] = useState(false);
   const [busquedaProveedor, setBusquedaProveedor] = useState('');
+  const [filtroEstadoProveedor, setFiltroEstadoProveedor] = useState('todos');
   const [paginaProveedores, setPaginaProveedores] = useState(1);
   const [modalProveedorAbierto, setModalProveedorAbierto] = useState(false);
   const [proveedorEditando, setProveedorEditando] = useState(null);
   const [guardandoProveedor, setGuardandoProveedor] = useState(false);
-  const [formProveedor, setFormProveedor] = useState({ nombre: '', contacto: '', telefono: '', estado: 'Activo' });
-  const [modalInsumosProveedor, setModalInsumosProveedor] = useState(false);
-  const [proveedorInsumosActual, setProveedorInsumosActual] = useState(null);
-  const [catalogoInsumosProveedor, setCatalogoInsumosProveedor] = useState([]);
-  const [insumosProveedorSeleccionados, setInsumosProveedorSeleccionados] = useState({});
-  const [cargandoInsumosProveedor, setCargandoInsumosProveedor] = useState(false);
-  const [guardandoInsumosProveedor, setGuardandoInsumosProveedor] = useState(false);
+  const [formProveedor, setFormProveedor] = useState({ nombre: '', contacto: '', lada: '52', telefono: '', estado: 'Activo' });
+  const [confirmacionProveedor, setConfirmacionProveedor] = useState(null);
+  const [passwordConfirmacionProveedor, setPasswordConfirmacionProveedor] = useState('');
+  const [mensajeProveedor, setMensajeProveedor] = useState({ visible: false, tipo: 'info', titulo: '', texto: '' });
+  const [procesandoProveedor, setProcesandoProveedor] = useState(false);
   // Compras a proveedores: cada pedido puede contener productos e insumos.
   const [modalCompraAbierto, setModalCompraAbierto] = useState(false);
   const [catalogoCompras, setCatalogoCompras] = useState([]);
@@ -123,6 +124,7 @@ function App() {
   const [empleados, setEmpleados] = useState([]);
   const [cargandoEmpleados, setCargandoEmpleados] = useState(false);
   const [busquedaEmpleado, setBusquedaEmpleado] = useState('');
+  const [filtroEstadoEmpleado, setFiltroEstadoEmpleado] = useState('todos');
   const [fechaInicioEmpleados, setFechaInicioEmpleados] = useState('');
   const [fechaFinEmpleados, setFechaFinEmpleados] = useState('');
   const [paginaEmpleados, setPaginaEmpleados] = useState(1);
@@ -134,6 +136,7 @@ function App() {
     const [passwordEmpleadoEdicion, setPasswordEmpleadoEdicion] = useState('');
     const [avisoEmpleado, setAvisoEmpleado] = useState({ visible: false, tipo: 'info', titulo: '', texto: '' });
     const [confirmacionEstadoEmpleado, setConfirmacionEstadoEmpleado] = useState(null);
+    const [passwordConfirmacionEstado, setPasswordConfirmacionEstado] = useState('');
     const [guardandoEmpleado, setGuardandoEmpleado] = useState(false);
 
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
@@ -470,6 +473,9 @@ const cargarReportes = async (opciones = {}) => {
   /* ==================================================
      CRUD DE PROVEEDORES
   ================================================== */
+  const mostrarMensajeProveedor = (tipo, titulo, texto) =>
+    setMensajeProveedor({ visible: true, tipo, titulo, texto });
+
   const cargarProveedores = async () => {
     setCargandoProveedores(true);
     try {
@@ -479,105 +485,71 @@ const cargarReportes = async (opciones = {}) => {
       setProveedores(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Error al cargar proveedores:', err);
-      alert(err.message || 'Error de conexión al cargar proveedores');
+      mostrarMensajeProveedor('error', 'No se pudieron cargar los proveedores', err.message || 'Error de conexión.');
     } finally {
       setCargandoProveedores(false);
     }
   };
 
+  const separarTelefonoProveedor = (telefono) => {
+    const digitos = String(telefono || '').replace(/\D/g, '');
+    if (digitos.length <= 10) return { lada: '52', telefono: digitos };
+    return { lada: digitos.slice(0, digitos.length - 10), telefono: digitos.slice(-10) };
+  };
+
   const abrirNuevoProveedor = () => {
     setProveedorEditando(null);
-    setFormProveedor({ nombre: '', contacto: '', telefono: '', estado: 'Activo' });
+    setFormProveedor({ nombre: '', contacto: '', lada: '52', telefono: '', estado: 'Activo' });
     setModalProveedorAbierto(true);
   };
 
   const abrirEditarProveedor = (proveedor) => {
     setProveedorEditando(proveedor);
+    const tel = separarTelefonoProveedor(proveedor.telefono);
     setFormProveedor({
       nombre: proveedor.nombre || '', contacto: proveedor.contacto || '',
-      telefono: proveedor.telefono || '', estado: proveedor.estado || 'Activo'
+      lada: tel.lada, telefono: tel.telefono, estado: proveedor.estado || 'Activo'
     });
     setModalProveedorAbierto(true);
   };
 
   const guardarProveedor = async (e) => {
     e.preventDefault();
-    if (!formProveedor.nombre.trim()) return alert('Escribe el nombre del proveedor.');
+    if (!formProveedor.nombre.trim()) {
+      mostrarMensajeProveedor('error', 'Falta el nombre', 'Escribe el nombre del proveedor.');
+      return;
+    }
+    const lada = String(formProveedor.lada || '').replace(/\D/g, '');
+    const numero = String(formProveedor.telefono || '').replace(/\D/g, '');
+    if (numero && (!/^\d{1,4}$/.test(lada) || !/^\d{10}$/.test(numero))) {
+      mostrarMensajeProveedor('error', 'Teléfono no válido', 'Escribe una lada de 1 a 4 dígitos y un número telefónico de exactamente 10 dígitos.');
+      return;
+    }
     setGuardandoProveedor(true);
     try {
       const response = await fetch(proveedorEditando ? `/api/proveedores/${proveedorEditando.id_proveedor}` : '/api/proveedores', {
         method: proveedorEditando ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formProveedor, nombre: formProveedor.nombre.trim() })
+        body: JSON.stringify({
+          nombre: formProveedor.nombre.trim(),
+          contacto: formProveedor.contacto,
+          telefono: numero ? `+${lada}${numero}` : '',
+          estado: formProveedor.estado
+        })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo guardar el proveedor');
       setModalProveedorAbierto(false);
       await cargarProveedores();
+      mostrarMensajeProveedor('success', proveedorEditando ? 'Proveedor actualizado' : 'Proveedor registrado',
+        proveedorEditando ? 'Los datos se actualizaron correctamente.' : 'El proveedor se registró correctamente.');
     } catch (err) {
       console.error('Error al guardar proveedor:', err);
-      alert(err.message || 'Error de conexión al guardar proveedor');
+      mostrarMensajeProveedor('error', 'No se pudo guardar', err.message || 'Error de conexión al guardar proveedor.');
     } finally {
       setGuardandoProveedor(false);
     }
   };
-
-  const abrirInsumosProveedor = async (proveedor) => {
-    setProveedorInsumosActual(proveedor);
-    setModalInsumosProveedor(true);
-    setCargandoInsumosProveedor(true);
-    try {
-      const [catalogoRes, asignadosRes] = await Promise.all([
-        fetch('/api/insumos-proveedor', { cache: 'no-store' }),
-        fetch(`/api/proveedores/${proveedor.id_proveedor}/insumos`, { cache: 'no-store' })
-      ]);
-      const catalogoData = await catalogoRes.json();
-      const asignadosData = await asignadosRes.json();
-      if (!catalogoRes.ok) throw new Error(catalogoData.error || 'No se pudo cargar el catálogo de insumos');
-      if (!asignadosRes.ok) throw new Error(asignadosData.error || 'No se pudieron cargar los insumos del proveedor');
-      setCatalogoInsumosProveedor(Array.isArray(catalogoData) ? catalogoData : []);
-      const seleccion = {};
-      (Array.isArray(asignadosData) ? asignadosData : []).forEach(item => {
-        seleccion[item.id_insumo] = { seleccionado: true, precio_compra: String(item.precio_compra ?? '') };
-      });
-      setInsumosProveedorSeleccionados(seleccion);
-    } catch (err) {
-      console.error('Error al cargar insumos del proveedor:', err);
-      alert(err.message || 'Error de conexión al consultar insumos');
-      setModalInsumosProveedor(false);
-    } finally {
-      setCargandoInsumosProveedor(false);
-    }
-  };
-
-  const guardarInsumosProveedor = async (e) => {
-    e.preventDefault();
-    if (!proveedorInsumosActual) return;
-    const insumos = Object.entries(insumosProveedorSeleccionados)
-      .filter(([, valor]) => valor.seleccionado)
-      .map(([id, valor]) => ({ id_insumo: Number(id), precio_compra: Number(valor.precio_compra) }));
-    if (insumos.some(i => !Number.isFinite(i.precio_compra) || i.precio_compra < 0)) {
-      alert('Indica un precio de compra válido y mayor o igual a cero para cada insumo seleccionado.');
-      return;
-    }
-    setGuardandoInsumosProveedor(true);
-    try {
-      const response = await fetch(`/api/proveedores/${proveedorInsumosActual.id_proveedor}/insumos`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ insumos })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudieron guardar los insumos');
-      setModalInsumosProveedor(false);
-      await cargarProveedores();
-      alert('Insumos y precios guardados correctamente.');
-    } catch (err) {
-      console.error('Error al guardar insumos del proveedor:', err);
-      alert(err.message || 'Error de conexión al guardar insumos');
-    } finally {
-      setGuardandoInsumosProveedor(false);
-    }
-  };
-
 
   const abrirNuevaCompra = async () => {
     setCategoriaCompraSeleccionada('');
@@ -675,6 +647,7 @@ const cargarReportes = async (opciones = {}) => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id_proveedor: Number(formCompra.id_proveedor),
+          id_usuario: Number(usuario?.id_usuario),
           fecha_compra: String(formCompra.fecha_compra).trim(),
           metodo_pago: formCompra.metodo_pago,
           observaciones: formCompra.observaciones,
@@ -697,22 +670,74 @@ const cargarReportes = async (opciones = {}) => {
     }
   };
 
+  const obtenerTiempoInactivoProveedor = (fecha) => {
+    if (!fecha) return '—';
+    const inicio = new Date(fecha);
+    if (Number.isNaN(inicio.getTime())) return '—';
+    const ahora = new Date();
+    if (inicio > ahora) return 'Menos de un día';
+    let meses = (ahora.getFullYear() - inicio.getFullYear()) * 12 +
+      (ahora.getMonth() - inicio.getMonth());
+    if (ahora.getDate() < inicio.getDate()) meses--;
+    meses = Math.max(0, meses);
+    const dias = Math.max(0, Math.floor((ahora - new Date(inicio.getFullYear(), inicio.getMonth() + meses, inicio.getDate())) / 86400000));
+    const anios = Math.floor(meses / 12);
+    const mesesRestantes = meses % 12;
+    if (anios > 0) return `${anios} año(s), ${mesesRestantes} mes(es)`;
+    if (meses > 0) return `${meses} mes(es), ${dias} día(s)`;
+    return `${Math.max(0, Math.floor((ahora - inicio) / 86400000))} día(s)`;
+  };
+
   const cambiarEstadoProveedor = async (proveedor) => {
-    const estadoNuevo = (proveedor.estado || 'Activo') === 'Activo' ? 'Inactivo' : 'Activo';
-    if (!window.confirm(`¿Deseas marcar a ${proveedor.nombre} como ${estadoNuevo.toLowerCase()}?`)) return;
+    const estadoActual = String(proveedor.estado || 'Activo').trim().toLowerCase();
+    const estadoNuevo = estadoActual === 'activo' ? 'Inactivo' : 'Activo';
+    setPasswordConfirmacionProveedor('');
+    setConfirmacionProveedor({
+      tipo: 'estado', proveedor,
+      titulo: estadoNuevo === 'Inactivo' ? '¿Desactivar proveedor?' : '¿Activar proveedor?',
+      texto: `¿Deseas marcar a ${proveedor.nombre} como ${estadoNuevo.toLowerCase()}?`,
+      estado: estadoNuevo
+    });
+  };
+
+
+  const confirmarAccionProveedor = async () => {
+    if (!confirmacionProveedor || procesandoProveedor) return;
+    const { tipo, proveedor, estado } = confirmacionProveedor;
+    if (tipo === 'estado' && estado === 'Inactivo' && !passwordConfirmacionProveedor.trim()) {
+      mostrarMensajeProveedor('error', 'Contraseña requerida', 'Ingresa la contraseña de tu sesión actual para desactivar este proveedor.');
+      return;
+    }
+    setProcesandoProveedor(true);
     try {
       const response = await fetch(`/api/proveedores/${proveedor.id_proveedor}/estado`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: estadoNuevo })
+        body: JSON.stringify({
+          estado,
+          solicitanteIdUsuario: usuario?.id_usuario,
+          passwordActual: estado === 'Inactivo' ? passwordConfirmacionProveedor : undefined
+        })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
+      if (!response.ok) throw new Error(data.error || 'No se pudo completar la operación');
+      setConfirmacionProveedor(null);
+      setPasswordConfirmacionProveedor('');
+      if (tipo === 'estado' && data && data.id_proveedor) {
+        setProveedores(lista => lista.map(item => Number(item.id_proveedor) === Number(data.id_proveedor) ? { ...item, ...data } : item));
+      }
       await cargarProveedores();
+      mostrarMensajeProveedor('success',
+        estado === 'Activo' ? 'Proveedor activado' : 'Proveedor desactivado',
+        data.message || 'El estado del proveedor se actualizó correctamente.');
     } catch (err) {
-      console.error('Error al cambiar estado:', err);
-      alert(err.message || 'Error de conexión al cambiar estado');
+      setConfirmacionProveedor(null);
+      setPasswordConfirmacionProveedor('');
+      mostrarMensajeProveedor('error', 'No se pudo completar', err.message || 'Ocurrió un error.');
+    } finally {
+      setProcesandoProveedor(false);
     }
   };
+
 
   useEffect(() => {
     if (usuario && vistaActual === 'proveedores') cargarProveedores();
@@ -798,11 +823,17 @@ const abrirEditarEmpleado = (emp) => {
     setEmpleadoEditando(emp);
     setPasswordEmpleadoEdicion('');
     const telefonoGuardado = String(emp.telefono || '').trim();
-    const partesTelefono = telefonoGuardado.match(/^\+(\d{1,4})[\s-]*(\d{4,14})$/);
+    // Los teléfonos nuevos se guardan como +52 662..., con separador.
+    // Para registros antiguos sin separador, México (+52) se interpreta con lada de 2 dígitos.
+    const partesSeparadas = telefonoGuardado.match(/^\+(\d{2,3})[\s-]+(\d{4,14})$/);
+    const digitosAntiguos = telefonoGuardado.replace(/\D/g, '');
+    const esFormatoAntiguoMexico = telefonoGuardado.startsWith('+52') && digitosAntiguos.length >= 6;
+    const ladaAntigua = esFormatoAntiguoMexico ? digitosAntiguos.slice(0, 2) : digitosAntiguos.slice(0, 3);
+    const numeroAntiguo = esFormatoAntiguoMexico ? digitosAntiguos.slice(2) : digitosAntiguos.slice(3);
     setFormEmpleado({
         nombre: emp.nombre || '',
-        lada: partesTelefono ? partesTelefono[1] : '52',
-        telefono: partesTelefono ? partesTelefono[2] : telefonoGuardado.replace(/\D/g, ''),
+        lada: partesSeparadas ? partesSeparadas[1] : (telefonoGuardado ? ladaAntigua : '52'),
+        telefono: partesSeparadas ? partesSeparadas[2] : (telefonoGuardado ? numeroAntiguo : ''),
         id_rol: Number(emp.id_rol || 1)
     });
     setModalEmpleadoAbierto(true);
@@ -816,11 +847,11 @@ const guardarEmpleado = async (e) => {
     }
     const ladaLimpia = String(formEmpleado.lada || '').replace(/\D/g, '');
     const telefonoLimpio = String(formEmpleado.telefono || '').replace(/\D/g, '');
-    if ((ladaLimpia || telefonoLimpio) && (!/^\d{1,4}$/.test(ladaLimpia) || !/^\d{4,14}$/.test(telefonoLimpio))) {
-        mostrarAvisoEmpleado('error', 'Teléfono no válido', 'Ingresa un código de país de 1 a 4 dígitos y un número telefónico de 4 a 14 dígitos.');
+    if (telefonoLimpio && (!/^\d{2,3}$/.test(ladaLimpia) || !/^\d{4,14}$/.test(telefonoLimpio))) {
+        mostrarAvisoEmpleado('error', 'Teléfono no válido', 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.');
         return;
     }
-    const telefonoCompleto = telefonoLimpio ? `+${ladaLimpia}${telefonoLimpio}` : '';
+    const telefonoCompleto = telefonoLimpio ? `+${ladaLimpia} ${telefonoLimpio}` : '';
     if (empleadoEditando && passwordEmpleadoEdicion && passwordEmpleadoEdicion.length < 6) {
         mostrarAvisoEmpleado('error', 'Contraseña demasiado corta', 'La nueva contraseña debe tener al menos 6 caracteres.');
         return;
@@ -835,6 +866,8 @@ const guardarEmpleado = async (e) => {
             body: JSON.stringify({
                 ...formEmpleado,
                 telefono: telefonoCompleto,
+                lada: ladaLimpia,
+                telefonoNumero: telefonoLimpio,
                 password: passwordEmpleadoEdicion || undefined
             })
         });
@@ -879,24 +912,6 @@ const guardarUsuarioEmpleado = async (e) => {
     }
 };
 
-const eliminarEmpleado = async (emp) => {
-    const confirmar = window.confirm(
-        `¿Eliminar definitivamente a ${emp.nombre}? También se eliminará su cuenta de acceso y contraseña. Esta acción no se puede deshacer.`
-    );
-    if (!confirmar) return;
-    setGuardandoEmpleado(true);
-    try {
-        const response = await fetch(`/api/empleados/${emp.id_empleado}`, { method: 'DELETE' });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || 'No se pudo eliminar el empleado.');
-        await cargarEmpleados();
-        mostrarAvisoEmpleado('success', 'Empleado eliminado', 'Se eliminó el registro y su cuenta de acceso.');
-    } catch (err) {
-        mostrarAvisoEmpleado('error', 'No se pudo eliminar', err.message || 'El empleado puede tener registros relacionados.');
-    } finally {
-        setGuardandoEmpleado(false);
-    }
-};
 
 const imprimirEmpleados = () => {
     setVistaImpresionEmpleados(true);
@@ -912,29 +927,38 @@ const imprimirEmpleados = () => {
 };
 
 const cambiarEstadoEmpleado = (emp) => {
-    const estadoActual = (emp.estado || 'Activo').trim();
-    const nuevoEstado = estadoActual === 'Activo' ? 'Inactivo' : 'Activo';
+    const estadoActual = String(emp.estado || 'Activo').trim().toLowerCase();
+    const nuevoEstado = estadoActual === 'activo' ? 'Inactivo' : 'Activo';
+    setPasswordConfirmacionEstado('');
     setConfirmacionEstadoEmpleado({ empleado: emp, nuevoEstado });
 };
 
 const confirmarCambioEstadoEmpleado = async () => {
     if (!confirmacionEstadoEmpleado || guardandoEmpleado) return;
     const { empleado: emp, nuevoEstado } = confirmacionEstadoEmpleado;
+    if (nuevoEstado === 'Inactivo' && !passwordConfirmacionEstado.trim()) {
+        mostrarAvisoEmpleado('error', 'Contraseña requerida', 'Ingresa la contraseña de tu sesión actual para desactivar este acceso.');
+        return;
+    }
     setGuardandoEmpleado(true);
     try {
         const response = await fetch(`/api/empleados/${emp.id_empleado}/estado`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ estado: nuevoEstado })
+            body: JSON.stringify({
+                estado: nuevoEstado,
+                solicitanteIdUsuario: usuario?.id_usuario,
+                passwordActual: nuevoEstado === 'Inactivo' ? passwordConfirmacionEstado : undefined
+            })
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
         setConfirmacionEstadoEmpleado(null);
+        setPasswordConfirmacionEstado('');
         await cargarEmpleados();
-        mostrarAvisoEmpleado('success', nuevoEstado === 'Activo' ? 'Empleado activado' : 'Empleado suspendido',
+        mostrarAvisoEmpleado('success', nuevoEstado === 'Activo' ? 'Empleado activado' : 'Empleado desactivado',
             `${emp.nombre} ahora está ${nuevoEstado.toLowerCase()}.`);
     } catch (err) {
-        setConfirmacionEstadoEmpleado(null);
         mostrarAvisoEmpleado('error', 'No se pudo cambiar el estado', err.message || 'Error al actualizar el estado.');
     } finally {
         setGuardandoEmpleado(false);
@@ -1115,7 +1139,7 @@ const confirmarCambioEstadoEmpleado = async () => {
   const formatearFechaContable = (valor) => {
     if (!valor) return '—';
     const texto = String(valor);
-    const fecha = /^\\d{4}-\\d{2}-\\d{2}$/.test(texto)
+    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(texto)
       ? new Date(`${texto}T12:00:00`)
       : new Date(texto);
     return Number.isNaN(fecha.getTime()) ? '—' : fecha.toLocaleDateString('es-MX');
@@ -1205,6 +1229,7 @@ const confirmarCambioEstadoEmpleado = async () => {
     }
 
     const ventaData = {
+      id_usuario: usuario?.id_usuario,
       total,
       metodo_pago: metodoPago,
       efectivo_recibido: metodoPago === 'Efectivo' ? efectivoNumero : 0,
@@ -1423,15 +1448,30 @@ const confirmarCambioEstadoEmpleado = async () => {
     setPaginaVentas(1);
   };
 
-  const imprimirHistorialVentas = () => {
-    document.body.classList.add('printing-sales-history');
-    const limpiar = () => {
-      document.body.classList.remove('printing-sales-history');
-      window.removeEventListener('afterprint', limpiar);
-    };
-    window.addEventListener('afterprint', limpiar);
-    window.print();
-    setTimeout(limpiar, 2000);
+  const imprimirHistorialVentas = (todoElHistorial = false) => {
+    const registros = todoElHistorial ? ventasGerencia : ventasFiltradas;
+    if (!registros.length) {
+      alert(todoElHistorial ? 'No hay ventas registradas para imprimir.' : 'No hay ventas en el periodo o con los filtros seleccionados.');
+      return;
+    }
+
+    setVentasParaImprimir(registros);
+    setTituloImpresionVentas(todoElHistorial
+      ? 'Historial completo de ventas'
+      : 'Ventas del periodo seleccionado');
+
+    // Espera a que React actualice el documento imprimible antes de abrir el diálogo.
+    requestAnimationFrame(() => {
+      document.body.classList.add('printing-sales-history');
+      const limpiar = () => {
+        document.body.classList.remove('printing-sales-history');
+        window.removeEventListener('afterprint', limpiar);
+        setVentasParaImprimir(null);
+      };
+      window.addEventListener('afterprint', limpiar);
+      window.print();
+      setTimeout(limpiar, 2500);
+    });
   };
 
   const imprimirTicketVenta = () => {
@@ -1453,9 +1493,11 @@ const confirmarCambioEstadoEmpleado = async () => {
       String(v || '').toLowerCase().includes(busquedaEmpleado.toLowerCase().trim())
     );
     const fecha = e.fecha_inactivacion ? String(e.fecha_inactivacion).slice(0, 10) : '';
+    const estadoEmpleado = String(e.estado || 'Activo').trim().toLowerCase();
+    const coincideEstado = filtroEstadoEmpleado === 'todos' || estadoEmpleado === filtroEstadoEmpleado;
     const coincideDesde = !fechaInicioEmpleados || (fecha && fecha >= fechaInicioEmpleados);
     const coincideHasta = !fechaFinEmpleados || (fecha && fecha <= fechaFinEmpleados);
-    return coincideTexto && coincideDesde && coincideHasta;
+    return coincideTexto && coincideEstado && coincideDesde && coincideHasta;
   });
 
   /* ==================================================
@@ -1947,7 +1989,7 @@ const confirmarCambioEstadoEmpleado = async () => {
             <div className="management-page-header" style={{ width: '100%', boxSizing: 'border-box' }}>
               <div>
                 <h2 className="title">Proveedores</h2>
-                <div className="subtitle">Administra proveedores, registra pedidos y recibe productos e insumos en inventario.</div>
+                <div className="subtitle">Administra los datos de tus proveedores. Registra las compras desde la sección correspondiente.</div>
               </div>
               <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><button type="button" className="btn-outline" onClick={abrirNuevaCompra}>＋ Registrar compra</button><button type="button" className="management-back-btn" onClick={abrirNuevoProveedor}>+ Nuevo proveedor</button></div>
             </div>
@@ -1955,24 +1997,38 @@ const confirmarCambioEstadoEmpleado = async () => {
             <section className="management-placeholder-panel suppliers-panel" style={{ width: '100%', maxWidth: 'none', minWidth: 0, boxSizing: 'border-box', padding: 24, background: '#fff', borderRadius: 14, border: '1px solid #e8dfd3', marginTop: 18, boxShadow: '0 3px 12px rgba(54, 43, 29, 0.04)' }}>
               <div style={{ display: 'flex', gap: 18, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 22 }}>
                 <div><strong style={{ fontSize: 22 }}>{proveedores.length}</strong><div className="subtitle">Proveedores registrados</div></div>
-                <input type="search" value={busquedaProveedor} onChange={e => { setBusquedaProveedor(e.target.value); setPaginaProveedores(1); }} placeholder="Buscar por nombre, contacto o teléfono..." aria-label="Buscar proveedores" className="suppliers-search" style={{ width: 360, minWidth: 260, maxWidth: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid #d5d9e0', borderRadius: 9, background: '#fff', fontSize: 14 }} />
+                <div className="status-filter-group">
+                  <input type="search" value={busquedaProveedor} onChange={e => { setBusquedaProveedor(e.target.value); setPaginaProveedores(1); }} placeholder="Buscar por nombre, contacto o teléfono..." aria-label="Buscar proveedores" className="suppliers-search" style={{ width: 360, minWidth: 260, maxWidth: '100%', boxSizing: 'border-box', padding: '12px 14px', border: '1px solid #d5d9e0', borderRadius: 9, background: '#fff', fontSize: 14 }} />
+                  <label className="status-filter-label">Mostrar
+                    <select value={filtroEstadoProveedor} onChange={e => { setFiltroEstadoProveedor(e.target.value); setPaginaProveedores(1); }} aria-label="Filtrar proveedores por estado" className="status-filter-select">
+                      <option value="todos">Todos</option><option value="activo">Activos</option><option value="inactivo">Inactivos</option>
+                    </select>
+                  </label>
+                </div>
               </div>
               {cargandoProveedores ? <p>Cargando proveedores...</p> : (() => {
-                const filtrados = proveedores.filter(p => [p.nombre, p.contacto, p.telefono, p.estado].some(v => String(v || '').toLowerCase().includes(busquedaProveedor.toLowerCase().trim())));
+                const filtrados = proveedores.filter(p => { const estado = String(p.estado || 'Activo').trim().toLowerCase(); const coincideEstado = filtroEstadoProveedor === 'todos' || estado === filtroEstadoProveedor; const coincideTexto = [p.nombre, p.contacto, p.telefono, p.estado].some(v => String(v || '').toLowerCase().includes(busquedaProveedor.toLowerCase().trim())); return coincideEstado && coincideTexto; });
                 const paginas = Math.max(1, Math.ceil(filtrados.length / PROVEEDORES_POR_PAGINA));
                 const pagina = Math.min(paginaProveedores, paginas);
                 const visibles = filtrados.slice((pagina - 1) * PROVEEDORES_POR_PAGINA, pagina * PROVEEDORES_POR_PAGINA);
                 return <>
                   <div className="suppliers-table-wrap" style={{ width: '100%', overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10 }}>
-                    <table className="suppliers-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 820, tableLayout: 'auto' }}>
-                      <thead><tr style={{ textAlign: 'left', background: '#f7f8fa' }}>{['Proveedor', 'Contacto', 'Teléfono', 'Estado', 'Catálogo', 'Acciones'].map(t => <th key={t} style={{ padding: '14px 16px', borderBottom: '1px solid #e6e8ec', whiteSpace: 'nowrap', fontSize: 13, color: '#34413b' }}>{t}</th>)}</tr></thead>
+                    <table className="suppliers-table" style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980, tableLayout: 'auto' }}>
+                      <thead><tr style={{ textAlign: 'left', background: '#f7f8fa' }}>{['Proveedor', 'Contacto', 'Teléfono', 'Estado', 'Tiempo inactivo', 'Acciones'].map(t => <th key={t} style={{ padding: '14px 16px', borderBottom: '1px solid #e6e8ec', whiteSpace: 'nowrap', fontSize: 13, color: '#34413b' }}>{t}</th>)}</tr></thead>
                       <tbody>
                         {visibles.map(p => <tr key={p.id_proveedor}>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 180 }}><strong style={{ overflowWrap: 'anywhere' }}>{p.nombre}</strong><div style={{ color: '#7b8492', fontSize: 12 }}>ID: {p.id_proveedor}</div></td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 220, overflowWrap: 'anywhere' }}>{p.contacto || '—'}</td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', minWidth: 150, whiteSpace: 'nowrap' }}>{p.telefono || '—'}</td>
                           <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3' }}><span style={{ display: 'inline-block', padding: '5px 9px', borderRadius: 20, fontSize: 12, background: (p.estado || 'Activo') === 'Activo' ? '#e4f7ec' : '#f0f1f3', color: (p.estado || 'Activo') === 'Activo' ? '#197443' : '#5f6670' }}>{p.estado || 'Activo'}</span></td>
-                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" className="supplier-action-btn supplier-catalog-btn" onClick={() => abrirInsumosProveedor(p)} style={{ marginRight: 8 }}>Ver insumos ({p.total_insumos || 0})</button></td><td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}><button type="button" className="supplier-action-btn" onClick={() => abrirEditarProveedor(p)} style={{ marginRight: 8 }}>Editar</button><button type="button" className="supplier-action-btn supplier-toggle-btn" onClick={() => cambiarEstadoProveedor(p)}>{(p.estado || 'Activo') === 'Activo' ? 'Desactivar' : 'Activar'}</button></td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap', color: (p.estado || 'Activo') === 'Activo' ? '#8a8176' : '#934c43', fontWeight: (p.estado || 'Activo') === 'Activo' ? 400 : 700 }}>
+                            {(p.estado || 'Activo') === 'Activo' ? '—' : obtenerTiempoInactivoProveedor(p.fecha_inactivacion)}
+                            {(p.estado || 'Activo') === 'Inactivo' && p.fecha_inactivacion && <div style={{ fontSize: 11, color: 'var(--ink-mute)', marginTop: 3 }}>Desde {new Date(p.fecha_inactivacion).toLocaleDateString('es-MX')}</div>}
+                          </td>
+                          <td style={{ padding: '15px 16px', borderBottom: '1px solid #edf0f3', whiteSpace: 'nowrap' }}>
+                            <button type="button" className="supplier-action-btn" onClick={() => abrirEditarProveedor(p)} style={{ marginRight: 8 }}>Editar</button>
+                            <button type="button" className="supplier-action-btn supplier-toggle-btn" onClick={() => cambiarEstadoProveedor(p)} style={{ marginRight: 8 }}>{(p.estado || 'Activo') === 'Activo' ? 'Desactivar' : 'Activar'}</button>
+                          </td>
                         </tr>)}
                         {visibles.length === 0 && <tr><td colSpan="6" style={{ padding: 24, textAlign: 'center', color: '#697386' }}>{filtrados.length === 0 ? 'No hay proveedores que coincidan con la búsqueda.' : 'No hay registros en esta página.'}</td></tr>}
                       </tbody>
@@ -2068,44 +2124,78 @@ const confirmarCambioEstadoEmpleado = async () => {
               </section>
             </div>}
 
-            {modalInsumosProveedor && <div role="presentation" onClick={e => { if (e.target === e.currentTarget && !guardandoInsumosProveedor) setModalInsumosProveedor(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1001, background: 'rgba(15,23,42,.52)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
-              <section role="dialog" aria-modal="true" aria-labelledby="titulo-insumos-proveedor" style={{ width: '100%', maxWidth: 820, maxHeight: '88vh', overflowY: 'auto', background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.22)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div><h2 id="titulo-insumos-proveedor" style={{ margin: '0 0 6px' }}>Insumos del proveedor</h2><p className="subtitle" style={{ margin: 0 }}>{proveedorInsumosActual?.nombre} · Selecciona los insumos que suministra e indica su precio de compra.</p></div>
-                  <button type="button" onClick={() => setModalInsumosProveedor(false)} disabled={guardandoInsumosProveedor}>Cerrar</button>
+            {modalProveedorAbierto && <div className="modal-overlay supplier-modal-overlay" onClick={e => { if (e.target === e.currentTarget && !guardandoProveedor) setModalProveedorAbierto(false); }}>
+              <section className="payment-modal supplier-form-modal" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-proveedor">
+                <div className="modal-header">
+                  <div><h3 id="titulo-modal-proveedor">{proveedorEditando ? 'Editar proveedor' : 'Nuevo proveedor'}</h3><p>Registra los datos de contacto del proveedor.</p></div>
+                  <button type="button" className="modal-close" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>×</button>
                 </div>
-                {cargandoInsumosProveedor ? <p style={{ padding: 24, textAlign: 'center' }}>Cargando catálogo de insumos...</p> : <form onSubmit={guardarInsumosProveedor}>
-                  {catalogoInsumosProveedor.length === 0 ? <p>No hay insumos registrados en el inventario.</p> : <div style={{ overflowX: 'auto', border: '1px solid #ece7e0', borderRadius: 10, marginTop: 18 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-                      <thead><tr style={{ background: '#faf8f5', textAlign: 'left' }}>{['Incluir', 'Insumo', 'Unidad', 'Precio de compra'].map(t => <th key={t} style={{ padding: 12, borderBottom: '1px solid #e8e1d8', whiteSpace: 'nowrap' }}>{t}</th>)}</tr></thead>
-                      <tbody>{catalogoInsumosProveedor.map(insumo => {
-                        const valor = insumosProveedorSeleccionados[insumo.id_insumo] || { seleccionado: false, precio_compra: '' };
-                        return <tr key={insumo.id_insumo}>
-                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}><input type="checkbox" checked={Boolean(valor.seleccionado)} onChange={e => setInsumosProveedorSeleccionados(prev => ({ ...prev, [insumo.id_insumo]: { ... (prev[insumo.id_insumo] || { precio_compra: '' }), seleccionado: e.target.checked } }))} aria-label={`Incluir ${insumo.nombre}`} /></td>
-                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}><strong>{insumo.nombre}</strong><div style={{ color: '#7b8492', fontSize: 12 }}>ID: {insumo.id_insumo}</div></td>
-                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6' }}>{insumo.unidad || '—'}</td>
-                          <td style={{ padding: 12, borderBottom: '1px solid #f0ece6', minWidth: 160 }}><input type="number" min="0" step="0.01" value={valor.precio_compra} disabled={!valor.seleccionado} onChange={e => setInsumosProveedorSeleccionados(prev => ({ ...prev, [insumo.id_insumo]: { ... (prev[insumo.id_insumo] || { seleccionado: false }), precio_compra: e.target.value } }))} placeholder="0.00" style={{ width: '100%', boxSizing: 'border-box', padding: '9px 10px', border: '1px solid #d8d1c8', borderRadius: 8 }} required={Boolean(valor.seleccionado)} /></td>
-                        </tr>;
-                      })}</tbody>
-                    </table>
-                  </div>}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 20 }}><span className="subtitle">Los cambios se guardarán en proveedor_insumo.</span><div style={{ display: 'flex', gap: 10 }}><button type="button" onClick={() => setModalInsumosProveedor(false)} disabled={guardandoInsumosProveedor}>Cancelar</button><button type="submit" disabled={guardandoInsumosProveedor || cargandoInsumosProveedor}>{guardandoInsumosProveedor ? 'Guardando...' : 'Guardar insumos'}</button></div></div>
-                </form>}
-              </section>
-            </div>}
-
-            {modalProveedorAbierto && <div role="presentation" onClick={e => { if (e.target === e.currentTarget) setModalProveedorAbierto(false); }} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,23,42,.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
-              <section role="dialog" aria-modal="true" aria-labelledby="titulo-modal-proveedor" style={{ width: '100%', maxWidth: 520, background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-                <h2 id="titulo-modal-proveedor" style={{ marginTop: 0 }}>{proveedorEditando ? 'Editar proveedor' : 'Nuevo proveedor'}</h2>
                 <form onSubmit={guardarProveedor}>
-                  <label style={{ display: 'block', marginBottom: 14 }}>Nombre *<input required maxLength="150" value={formProveedor.nombre} onChange={e => setFormProveedor(f => ({ ...f, nombre: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
-                  <label style={{ display: 'block', marginBottom: 14 }}>Contacto<input maxLength="150" value={formProveedor.contacto} onChange={e => setFormProveedor(f => ({ ...f, contacto: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
-                  <label style={{ display: 'block', marginBottom: 14 }}>Teléfono<input maxLength="40" value={formProveedor.telefono} onChange={e => setFormProveedor(f => ({ ...f, telefono: e.target.value }))} style={{ display: 'block', width: '100%', boxSizing: 'border-box', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }} /></label>
-                  <label style={{ display: 'block', marginBottom: 20 }}>Estado<select value={formProveedor.estado} onChange={e => setFormProveedor(f => ({ ...f, estado: e.target.value }))} style={{ display: 'block', width: '100%', padding: 11, marginTop: 6, border: '1px solid #d5d9e0', borderRadius: 8 }}><option value="Activo">Activo</option><option value="Inactivo">Inactivo</option></select></label>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}><button type="button" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>Cancelar</button><button type="submit" disabled={guardandoProveedor}>{guardandoProveedor ? 'Guardando...' : 'Guardar proveedor'}</button></div>
+                  <div className="cash-field"><label>Nombre *</label><input required maxLength="150" value={formProveedor.nombre} onChange={e => setFormProveedor(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del proveedor" /></div>
+                  <div className="cash-field"><label>Contacto</label><input maxLength="150" value={formProveedor.contacto} onChange={e => setFormProveedor(f => ({ ...f, contacto: e.target.value }))} placeholder="Correo o persona de contacto" /></div>
+                  <div className="cash-field">
+                    <label>Teléfono</label>
+                    <div className="phone-input-wrap supplier-phone-wrap">
+                      <span className="supplier-lada-prefix">+</span>
+                      <input className="supplier-lada-input" aria-label="Lada internacional" inputMode="numeric" maxLength="4" placeholder="52" value={formProveedor.lada} onChange={e => setFormProveedor(f => ({ ...f, lada: e.target.value.replace(/\D/g, '').slice(0,4) }))} />
+                      <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="10" placeholder="10 dígitos" value={formProveedor.telefono} onChange={e => setFormProveedor(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0,10) }))} />
+                    </div>
+                    <small>Lada internacional editable y número nacional de 10 dígitos.</small>
+                  </div>
+                  <div className="modal-actions">
+                    <button type="button" className="modal-secondary" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>Cancelar</button>
+                    <button type="submit" className="modal-primary" disabled={guardandoProveedor}>{guardandoProveedor ? 'Guardando...' : 'Guardar proveedor'}</button>
+                  </div>
                 </form>
               </section>
             </div>}
+
+            {confirmacionProveedor && <div className="modal-overlay supplier-modal-overlay supplier-confirm-overlay">
+              <section className={`payment-modal employee-status-modal ${confirmacionProveedor.tipo === 'estado' ? 'supplier-status-modal' : ''}`} role="alertdialog" aria-modal="true">
+                <div className={`purchase-dialog-icon ${confirmacionProveedor.tipo === 'estado' && confirmacionProveedor.estado === 'Inactivo' ? 'warning' : confirmacionProveedor.tipo === 'estado' ? 'success' : ''}`}>
+                  {confirmacionProveedor.tipo === 'eliminar' ? '!' : confirmacionProveedor.estado === 'Inactivo' ? '!' : '✓'}
+                </div>
+                <h3>{confirmacionProveedor.titulo}</h3>
+                <p>{confirmacionProveedor.texto}</p>
+                {confirmacionProveedor.tipo === 'estado' && confirmacionProveedor.estado === 'Inactivo' && (
+                  <div className="employee-status-password">
+                    <label htmlFor="password-confirmar-proveedor">Contraseña de tu sesión actual</label>
+                    <input
+                      id="password-confirmar-proveedor"
+                      type="password"
+                      autoComplete="current-password"
+                      placeholder="Ingresa tu contraseña"
+                      value={passwordConfirmacionProveedor}
+                      onChange={e => setPasswordConfirmacionProveedor(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') confirmarAccionProveedor(); }}
+                      disabled={procesandoProveedor}
+                    />
+                    <small>Se solicita para confirmar que tienes autorización para desactivar este proveedor.</small>
+                  </div>
+                )}
+                <div className="modal-actions">
+                  <button type="button" className="modal-secondary" onClick={() => { setConfirmacionProveedor(null); setPasswordConfirmacionProveedor(''); }} disabled={procesandoProveedor}>Cancelar</button>
+                  <button
+                    type="button"
+                    className={confirmacionProveedor.tipo === 'eliminar' ? 'modal-danger' : 'modal-primary'}
+                    onClick={confirmarAccionProveedor}
+                    disabled={procesandoProveedor || (confirmacionProveedor.tipo === 'estado' && confirmacionProveedor.estado === 'Inactivo' && !passwordConfirmacionProveedor.trim())}
+                  >
+                    {procesandoProveedor ? 'Procesando...' : confirmacionProveedor.tipo === 'eliminar' ? 'Sí, eliminar' : confirmacionProveedor.estado === 'Inactivo' ? 'Confirmar desactivación' : 'Confirmar activación'}
+                  </button>
+                </div>
+              </section>
+            </div>}
+
+            {mensajeProveedor.visible && <div className="modal-overlay supplier-modal-overlay supplier-message-overlay">
+              <section className="payment-modal purchase-dialog" role="alertdialog" aria-modal="true">
+                <div className={`purchase-dialog-icon ${mensajeProveedor.tipo}`}>{mensajeProveedor.tipo === 'success' ? '✓' : '!'}</div>
+                <h3>{mensajeProveedor.titulo}</h3>
+                <p>{mensajeProveedor.texto}</p>
+                <div className="modal-actions"><button type="button" className="modal-primary" onClick={() => setMensajeProveedor(p => ({ ...p, visible: false }))}>Aceptar</button></div>
+              </section>
+            </div>}
+
           </main>
         )}
 
@@ -2131,9 +2221,14 @@ const confirmarCambioEstadoEmpleado = async () => {
                   <input type="search" placeholder="Buscar por nombre o usuario..." value={busquedaEmpleado}
                     onChange={e => { setBusquedaEmpleado(e.target.value); setPaginaEmpleados(1); }} />
                   <div className="employees-date-filters">
+                    <label>Mostrar
+                      <select value={filtroEstadoEmpleado} onChange={e => { setFiltroEstadoEmpleado(e.target.value); setPaginaEmpleados(1); }} aria-label="Filtrar empleados por estado" className="status-filter-select">
+                        <option value="todos">Todos</option><option value="activo">Activos</option><option value="inactivo">Inactivos</option>
+                      </select>
+                    </label>
                     <label>Inactivos desde <input type="date" value={fechaInicioEmpleados} onChange={e => {setFechaInicioEmpleados(e.target.value);setPaginaEmpleados(1);}} /></label>
                     <label>Hasta <input type="date" value={fechaFinEmpleados} onChange={e => {setFechaFinEmpleados(e.target.value);setPaginaEmpleados(1);}} /></label>
-                    <button type="button" className="btn-outline" onClick={() => {setFechaInicioEmpleados('');setFechaFinEmpleados('');setBusquedaEmpleado('');setPaginaEmpleados(1);}}>Limpiar filtros</button>
+                    <button type="button" className="btn-outline" onClick={() => {setFechaInicioEmpleados('');setFechaFinEmpleados('');setBusquedaEmpleado('');setFiltroEstadoEmpleado('todos');setPaginaEmpleados(1);}}>Limpiar filtros</button>
                     <button type="button" className="management-back-btn" onClick={imprimirEmpleados}>Imprimir</button>
                   </div>
                 </div>
@@ -2165,7 +2260,7 @@ const confirmarCambioEstadoEmpleado = async () => {
                         }
 
                         return empleadosPagina.map(emp => {
-                          const esActivo = (emp.estado || 'Activo').trim() === 'Activo';
+                          const esActivo = String(emp.estado || 'Activo').trim().toLowerCase() === 'activo';
                           return (
                             <tr key={emp.id_empleado}>
                               <td><strong>#{emp.id_empleado}</strong></td>
@@ -2215,9 +2310,6 @@ const confirmarCambioEstadoEmpleado = async () => {
                                   >
                                     {esActivo ? 'Desactivar' : 'Activar'}
                                   </button>
-                                  <button type="button" className="btn-outline employee-delete-btn" onClick={() => eliminarEmpleado(emp)} disabled={guardandoEmpleado}>
-                                    Eliminar
-                                  </button>
                                 </div>
                               </td>
                             </tr>
@@ -2238,14 +2330,30 @@ const confirmarCambioEstadoEmpleado = async () => {
               </section>
 
               {confirmacionEstadoEmpleado && (
-                <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget && !guardandoEmpleado)setConfirmacionEstadoEmpleado(null);}}>
-                  <section className="payment-modal" role="dialog" aria-modal="true" style={{maxWidth:440,textAlign:'center'}}>
-                    <div className="purchase-dialog-icon">{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '!' : '✓'}</div>
-                    <h3>{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '¿Suspender empleado?' : '¿Activar empleado?'}</h3>
-                    <p>¿Deseas cambiar el estado de {confirmacionEstadoEmpleado.empleado.nombre} a {confirmacionEstadoEmpleado.nuevoEstado.toLowerCase()}?</p>
+                <div className="modal-overlay" onClick={e=>{if(e.target===e.currentTarget && !guardandoEmpleado){setConfirmacionEstadoEmpleado(null);setPasswordConfirmacionEstado('');}}}>
+                  <section className="payment-modal employee-status-modal" role="dialog" aria-modal="true">
+                    <div className={`purchase-dialog-icon ${confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? 'warning' : 'success'}`}>{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '!' : '✓'}</div>
+                    <h3>{confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? '¿Desactivar acceso?' : '¿Activar acceso?'}</h3>
+                    <p>Vas a cambiar el estado de <strong>{confirmacionEstadoEmpleado.empleado.nombre}</strong> a {confirmacionEstadoEmpleado.nuevoEstado.toLowerCase()}.</p>
+                    {confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' && (
+                      <div className="employee-status-password">
+                        <label htmlFor="password-confirmar-estado">Contraseña de tu sesión actual</label>
+                        <input
+                          id="password-confirmar-estado"
+                          type="password"
+                          autoComplete="current-password"
+                          placeholder="Ingresa tu contraseña"
+                          value={passwordConfirmacionEstado}
+                          onChange={e=>setPasswordConfirmacionEstado(e.target.value)}
+                          onKeyDown={e=>{if(e.key==='Enter')confirmarCambioEstadoEmpleado();}}
+                          disabled={guardandoEmpleado}
+                        />
+                        <small>Se solicita para confirmar que tienes autorización para desactivar el acceso.</small>
+                      </div>
+                    )}
                     <div className="modal-actions">
-                      <button type="button" className="modal-secondary" onClick={()=>setConfirmacionEstadoEmpleado(null)} disabled={guardandoEmpleado}>Cancelar</button>
-                      <button type="button" className="modal-primary" onClick={confirmarCambioEstadoEmpleado} disabled={guardandoEmpleado}>{guardandoEmpleado ? 'Procesando...' : 'Confirmar'}</button>
+                      <button type="button" className="modal-secondary" onClick={()=>{setConfirmacionEstadoEmpleado(null);setPasswordConfirmacionEstado('');}} disabled={guardandoEmpleado}>Cancelar</button>
+                      <button type="button" className="modal-primary" onClick={confirmarCambioEstadoEmpleado} disabled={guardandoEmpleado || (confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' && !passwordConfirmacionEstado.trim())}>{guardandoEmpleado ? 'Procesando...' : confirmacionEstadoEmpleado.nuevoEstado === 'Inactivo' ? 'Confirmar desactivación' : 'Confirmar activación'}</button>
                     </div>
                   </section>
                 </div>
@@ -2288,13 +2396,13 @@ const confirmarCambioEstadoEmpleado = async () => {
                         <div className="phone-input-wrap employee-phone-input">
                           <div className="employee-country-code">
                             <span>+</span>
-                            <input type="tel" inputMode="numeric" aria-label="Lada o código de país" maxLength="4" placeholder="52" value={formEmpleado.lada} onChange={e => setFormEmpleado({ ...formEmpleado, lada: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
+                            <input type="tel" inputMode="numeric" aria-label="Lada o código de país" maxLength="3" minLength="2" placeholder="52" value={formEmpleado.lada} onChange={e => setFormEmpleado({ ...formEmpleado, lada: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
                           </div>
                           <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="14" placeholder="Número telefónico"
                             value={formEmpleado.telefono}
                             onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value.replace(/\D/g, '').slice(0, 14) })} />
                         </div>
-                        <small>Escribe la lada o código de país y el número sin espacios. Ejemplo: +52 y 6623259338.</small>
+                        <small>La lada debe tener 2 o 3 dígitos. Escribe el número telefónico por separado. Ejemplo: +52 y 6623259338.</small>
                       </div>
                       <div className="modal-section">
                         <label className="modal-label">Rol del sistema</label>
@@ -2383,7 +2491,8 @@ const confirmarCambioEstadoEmpleado = async () => {
               </div>
               <div className="sales-header-actions">
                 <button type="button" className="btn-outline" onClick={() => { cargarVentasGerencia(); setPaginaVentas(1); }}>↻ Actualizar</button>
-                <button type="button" className="management-btn" onClick={imprimirHistorialVentas}>▤ Imprimir historial</button>
+                <button type="button" className="management-btn" onClick={() => imprimirHistorialVentas(true)}>▤ Imprimir todo el historial</button>
+                <button type="button" className="management-btn" onClick={() => imprimirHistorialVentas(false)}>▤ Imprimir periodo/filtros</button>
               </div>
             </div>
 
@@ -2463,7 +2572,7 @@ const confirmarCambioEstadoEmpleado = async () => {
 
             <div className="sales-results-caption">
               <span><strong>{ventasFiltradas.length}</strong> ventas encontradas</span>
-              <span>Mostrando máximo 12 registros por página</span>
+              <span>12 registros por página · puedes imprimir todo el historial o el periodo filtrado</span>
             </div>
             <div className="inventory-table-wrapper sales-table-wrapper">
               <table className="inventory-table">
@@ -2514,6 +2623,36 @@ const confirmarCambioEstadoEmpleado = async () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Documento completo para impresión: incluye TODAS las ventas filtradas,
+                sin limitarse a los 12 registros de la página visible, y sus productos. */}
+            <section className="sales-print-only">
+              <h2>{tituloImpresionVentas}</h2>
+              <p>Registros incluidos: {(ventasParaImprimir || ventasFiltradas).length}</p>
+              <p>Periodo: {ventasParaImprimir === ventasGerencia ? 'Todo el historial' : `${fechaInicioVentas || 'Inicio'} — ${fechaFinVentas || 'Actualidad'}`}</p>
+              <p>Total vendido: <strong>{money((ventasParaImprimir || ventasFiltradas).reduce((sum, v) => sum + Number(v.total || 0), 0))}</strong></p>
+              {(ventasParaImprimir || ventasFiltradas).map(v => (
+                <article className="sales-print-record" key={`print-${v.folio}`}>
+                  <div className="sales-print-record-heading">
+                    <strong>Ticket #TK-{v.folio}</strong>
+                    <span>{new Date(v.fecha_hora).toLocaleString('es-MX')}</span>
+                    <span>{v.metodo_pago}</span>
+                    <span>Atendió: {v.nombre_usuario || v.username || 'No disponible'}</span>
+                  </div>
+                  <table className="sales-print-detail-table">
+                    <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>
+                    <tbody>
+                      {(v.detalles || []).map((d, idx) => (
+                        <tr key={`${v.folio}-${idx}`}>
+                          <td>{d.nombre}</td><td>{d.cantidad}</td><td>{money(d.precio)}</td><td>{money(d.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="sales-print-record-total">Total: {money(v.total)} · Recibido: {money(v.efectivo_recibido || v.total)} · Cambio: {money(v.cambio_entregado || 0)}</div>
+                </article>
+              ))}
+            </section>
 
             {ventasFiltradas.length > 0 && (
               <div className="pagination-controls sales-pagination" style={{
@@ -2590,6 +2729,7 @@ const confirmarCambioEstadoEmpleado = async () => {
                     <div><span>Método de pago</span><strong>{ticketSeleccionado.metodo_pago}</strong></div>
                     <div><span>Recibido</span><strong>{money(ticketSeleccionado.efectivo_recibido || ticketSeleccionado.total)}</strong></div>
                     <div><span>Cambio</span><strong>{money(ticketSeleccionado.cambio_entregado || 0)}</strong></div>
+                    <div><span>Atendió</span><strong>{ticketSeleccionado.nombre_usuario || ticketSeleccionado.username || 'No disponible'}</strong></div>
                   </div>
 
                   <div className="ticket-modal-table-wrap">
@@ -2741,7 +2881,7 @@ const confirmarCambioEstadoEmpleado = async () => {
           </div>
           <div className="purchase-ticket-paper">
             <header className="purchase-ticket-header">
-              <div><h2>CAFETERÍA ORIGEN</h2><strong>Ticket de compra CP-{compraTicketAbierta.id_compra}</strong><div>Proveedor: {compraTicketAbierta.proveedor}</div></div>
+              <div><h2>CAFETERÍA ORIGEN</h2><strong>Ticket de compra CP-{compraTicketAbierta.id_compra}</strong><div>Proveedor: {compraTicketAbierta.proveedor}</div><div><strong>Realizó:</strong> {compraTicketAbierta.nombre_usuario || compraTicketAbierta.username || 'No registrado'}{compraTicketAbierta.username ? ` (@${compraTicketAbierta.username})` : ''}{compraTicketAbierta.rol_usuario ? ` · ${compraTicketAbierta.rol_usuario}` : ''}</div></div>
               <div><div>Fecha: {formatearFechaContable(compraTicketAbierta.fecha_compra)}</div><div>Método: {compraTicketAbierta.metodo_pago}</div><div>Estado: {compraTicketAbierta.estado || 'Recibida'}</div></div>
             </header>
             <div className="purchase-ticket-table-wrap">
@@ -2782,7 +2922,7 @@ const confirmarCambioEstadoEmpleado = async () => {
         <article className="purchase-print-ticket" key={`print-${compra.id_compra}`}>
           <div className="purchase-print-ticket-head">
             <div><h3>Ticket CP-{compra.id_compra}</h3><strong>{compra.proveedor}</strong></div>
-            <div>Fecha: {formatearFechaContable(compra.fecha_compra)}<br/>Pago: {compra.metodo_pago}<br/>Estado: {compra.estado || 'Recibida'}</div>
+            <div>Fecha: {formatearFechaContable(compra.fecha_compra)}<br/>Pago: {compra.metodo_pago}<br/>Estado: {compra.estado || 'Recibida'}<br/>Realizó: {compra.nombre_usuario || compra.username || 'No registrado'}{compra.username ? ` (@${compra.username})` : ''}{compra.rol_usuario ? ` · ${compra.rol_usuario}` : ''}</div>
           </div>
           <table className="purchase-print-table">
             <thead><tr><th>Artículo</th><th>Tipo</th><th>Cantidad</th><th>Precio unitario</th><th>Subtotal</th></tr></thead>

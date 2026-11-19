@@ -236,9 +236,13 @@ app.put('/api/inventario/:id', async (req, res) => {
 app.get('/api/ventas', async (req, res) => {
     try {
         const queryVentas = `
-            SELECT id_venta, total, metodo_pago, efectivo_recibido, cambio_entregado, fecha_hora 
-            FROM public.ventas 
-            ORDER BY fecha_hora DESC;
+            SELECT v.id_venta, v.total, v.metodo_pago, v.efectivo_recibido,
+                   v.cambio_entregado, v.fecha_hora,
+                   e.nombre AS nombre_usuario, u.username
+            FROM public.ventas v
+            LEFT JOIN public.usuarios u ON u.id_usuario = v.id_usuario
+            LEFT JOIN public.empleado e ON e.id_empleado = u.id_empleado
+            ORDER BY v.fecha_hora DESC;
         `;
         const ventasRes = await pool.query(queryVentas);
         const ventas = [];
@@ -258,6 +262,8 @@ app.get('/api/ventas', async (req, res) => {
                 efectivo_recibido: parseFloat(v.efectivo_recibido || 0),
                 cambio_entregado: parseFloat(v.cambio_entregado || 0),
                 fecha_hora: v.fecha_hora,
+                nombre_usuario: v.nombre_usuario || null,
+                username: v.username || null,
                 detalles: detalleRes.rows
             });
         }
@@ -273,11 +279,25 @@ app.get('/api/ventas', async (req, res) => {
 // REGISTRAR VENTA, TAMAÑOS, EMPAQUES Y PROVEEDOR
 // ==========================================
 app.post('/api/ventas', async (req, res) => {
-    const { total, metodo_pago, efectivo_recibido, cambio_entregado, detalles } = req.body;
+    const { id_usuario, total, metodo_pago, efectivo_recibido, cambio_entregado, detalles } = req.body;
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
+        if (!Number.isInteger(Number(id_usuario)) || Number(id_usuario) <= 0) {
+            const error = new Error('No se pudo identificar al usuario que realiza la venta. Cierra sesión e inicia nuevamente.');
+            error.statusCode = 400;
+            throw error;
+        }
+        const usuarioVenta = await client.query(
+            'SELECT id_usuario FROM public.usuarios WHERE id_usuario = $1',
+            [Number(id_usuario)]
+        );
+        if (!usuarioVenta.rowCount) {
+            const error = new Error('El usuario que realiza la venta no existe.');
+            error.statusCode = 400;
+            throw error;
+        }
 
         // VALIDACIÓN PREVIA: impedir que una venta deje insumos con stock negativo.
         // Se agrupa el consumo de todos los productos del carrito para detectar
@@ -398,9 +418,9 @@ app.post('/api/ventas', async (req, res) => {
 
         // 1. Insertar la venta principal
         const ventaRes = await client.query(
-            `INSERT INTO public.ventas (total, metodo_pago, efectivo_recibido, cambio_entregado) 
-             VALUES ($1, $2, $3, $4) RETURNING id_venta`,
-            [total, metodo_pago, efectivo_recibido || 0, cambio_entregado || 0]
+            `INSERT INTO public.ventas (total, metodo_pago, efectivo_recibido, cambio_entregado, id_usuario)
+             VALUES ($1, $2, $3, $4, $5) RETURNING id_venta`,
+            [total, metodo_pago, efectivo_recibido || 0, cambio_entregado || 0, Number(id_usuario)]
         );
         const id_venta = ventaRes.rows[0].id_venta;
 
@@ -539,11 +559,16 @@ app.get('/api/compras', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT c.id_compra, c.fecha_compra, c.total, c.metodo_pago, c.estado,
-                   p.nombre AS proveedor, COUNT(d.id_detalle_compra)::int AS articulos
+                   p.nombre AS proveedor,
+                   e.nombre AS nombre_usuario, u.username, r.nombre AS rol_usuario,
+                   COUNT(d.id_detalle_compra)::int AS articulos
             FROM public.compra_proveedor c
             JOIN public.proveedor p ON p.id_proveedor = c.id_proveedor
+            LEFT JOIN public.usuarios u ON u.id_usuario = c.id_usuario
+            LEFT JOIN public.empleado e ON e.id_empleado = u.id_empleado
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
             LEFT JOIN public.detalle_compra_proveedor d ON d.id_compra = c.id_compra
-            GROUP BY c.id_compra, p.nombre
+            GROUP BY c.id_compra, p.nombre, e.nombre, u.username, r.nombre
             ORDER BY c.id_compra DESC
             LIMIT 100;
         `);
@@ -556,13 +581,15 @@ app.get('/api/compras', async (req, res) => {
 
 app.post('/api/compras', async (req, res) => {
     const idProveedor = Number(req.body.id_proveedor);
+    const idUsuario = Number(req.body.id_usuario);
     const fechaCompra = req.body.fecha_compra || new Date().toISOString().slice(0, 10);
     const metodoPago = String(req.body.metodo_pago || 'Efectivo').trim();
     const observaciones = String(req.body.observaciones || '').trim() || null;
     const items = req.body.items;
 
-    if (!Number.isInteger(idProveedor) || idProveedor <= 0 || !Array.isArray(items) || !items.length) {
-        return res.status(400).json({ error: 'Selecciona un proveedor y agrega artículos a la compra.' });
+    if (!Number.isInteger(idProveedor) || idProveedor <= 0 || !Number.isInteger(idUsuario) || idUsuario <= 0 ||
+        !Array.isArray(items) || !items.length) {
+        return res.status(400).json({ error: 'No se pudo identificar al usuario o faltan el proveedor y los artículos de la compra.' });
     }
     const fechaTexto = String(fechaCompra).trim();
     const partesFecha = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaTexto);
@@ -604,6 +631,17 @@ app.post('/api/compras', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const usuarioCompra = await client.query(
+            `SELECT u.id_usuario
+             FROM public.usuarios u
+             JOIN public.empleado e ON e.id_empleado = u.id_empleado
+             WHERE u.id_usuario = $1 AND LOWER(COALESCE(e.estado, 'Activo')) = 'activo'`,
+            [idUsuario]
+        );
+        if (!usuarioCompra.rowCount) {
+            const e = new Error('El usuario que registra la compra no existe o está inactivo. Inicia sesión nuevamente.');
+            e.statusCode = 401; throw e;
+        }
         const proveedor = await client.query(
             `SELECT id_proveedor FROM public.proveedor WHERE id_proveedor = $1 AND COALESCE(estado,'Activo') = 'Activo' FOR UPDATE`,
             [idProveedor]
@@ -644,10 +682,10 @@ app.post('/api/compras', async (req, res) => {
 
         const compraRes = await client.query(`
             INSERT INTO public.compra_proveedor
-              (id_proveedor, fecha_compra, total, metodo_pago, observaciones, estado)
-            VALUES ($1,$2,$3,$4,$5,'Recibida')
+              (id_proveedor, fecha_compra, total, metodo_pago, observaciones, estado, id_usuario)
+            VALUES ($1,$2,$3,$4,$5,'Recibida',$6)
             RETURNING id_compra;
-        `, [idProveedor, fechaTexto, total, metodoPago, observaciones]);
+        `, [idProveedor, fechaTexto, total, metodoPago, observaciones, idUsuario]);
         const idCompra = compraRes.rows[0].id_compra;
 
         for (const item of articulosValidados) {
@@ -716,6 +754,9 @@ app.get('/api/contabilidad', async (req, res) => {
                     c.estado,
                     c.observaciones,
                     p.nombre AS proveedor,
+                    e.nombre AS nombre_usuario,
+                    u.username,
+                    r.nombre AS rol_usuario,
                     COALESCE(
                         json_agg(
                             json_build_object(
@@ -732,8 +773,11 @@ app.get('/api/contabilidad', async (req, res) => {
                     ) AS detalles
                 FROM public.compra_proveedor c
                 INNER JOIN public.proveedor p ON p.id_proveedor = c.id_proveedor
+                LEFT JOIN public.usuarios u ON u.id_usuario = c.id_usuario
+                LEFT JOIN public.empleado e ON e.id_empleado = u.id_empleado
+                LEFT JOIN public.rol r ON r.id_rol = e.id_rol
                 LEFT JOIN public.detalle_compra_proveedor d ON d.id_compra = c.id_compra
-                GROUP BY c.id_compra, p.nombre
+                GROUP BY c.id_compra, p.nombre, e.nombre, u.username, r.nombre
                 ORDER BY c.fecha_compra DESC, c.id_compra DESC;
             `)
         ]);
@@ -845,17 +889,62 @@ app.post('/api/nominas/:id/pagos', async (req, res) => {
 });
 
 // CRUD DE PROVEEDORES
-// Tabla existente: public.proveedor
-// ==========================================
+// La fecha de inactivación permite aplicar la depuración automática a los 6 meses.
+const prepararProveedores = async () => {
+    await pool.query(`ALTER TABLE public.proveedor ADD COLUMN IF NOT EXISTS fecha_inactivacion TIMESTAMPTZ`);
+    await pool.query(`
+        UPDATE public.proveedor
+        SET fecha_inactivacion = NOW()
+        WHERE LOWER(COALESCE(estado, 'activo')) = 'inactivo'
+          AND fecha_inactivacion IS NULL
+    `);
+};
+const limpiarProveedoresInactivosVencidos = async () => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const vencidos = await client.query(`
+            SELECT p.id_proveedor
+            FROM public.proveedor p
+            WHERE LOWER(COALESCE(p.estado, 'activo')) = 'inactivo'
+              AND p.fecha_inactivacion IS NOT NULL
+              AND p.fecha_inactivacion <= NOW() - INTERVAL '6 months'
+              AND NOT EXISTS (
+                SELECT 1 FROM public.compra_proveedor c WHERE c.id_proveedor = p.id_proveedor
+              )
+            FOR UPDATE
+        `);
+        const ids = vencidos.rows.map(row => row.id_proveedor);
+        if (ids.length) {
+            await client.query('DELETE FROM public.proveedor_insumo WHERE id_proveedor = ANY($1::int[])', [ids]);
+            await client.query('DELETE FROM public.proveedor WHERE id_proveedor = ANY($1::int[])', [ids]);
+            console.log(`[Limpieza de proveedores] Se eliminaron ${ids.length} proveedor(es) inactivos por más de 6 meses.`);
+        }
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('No se pudo ejecutar la limpieza de proveedores:', err.message);
+    } finally {
+        client.release();
+    }
+};
 app.get('/api/proveedores', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT p.id_proveedor, p.nombre, p.contacto, p.telefono,
+            SELECT p.id_proveedor, p.nombre, p.contacto, p.telefono, p.fecha_inactivacion,
                    COALESCE(NULLIF(p.estado, ''), 'Activo') AS estado,
+                   CASE
+                     WHEN LOWER(COALESCE(p.estado, 'activo')) <> 'inactivo' OR p.fecha_inactivacion IS NULL THEN NULL
+                     ELSE CONCAT(
+                       GREATEST(EXTRACT(YEAR FROM age(NOW(), p.fecha_inactivacion))::int, 0), ' año(s), ',
+                       GREATEST(EXTRACT(MONTH FROM age(NOW(), p.fecha_inactivacion))::int, 0), ' mes(es), ',
+                       GREATEST(EXTRACT(DAY FROM age(NOW(), p.fecha_inactivacion))::int, 0), ' día(s)'
+                     )
+                   END AS tiempo_inactivo,
                    COUNT(pi.id_insumo)::int AS total_insumos
             FROM public.proveedor p
             LEFT JOIN public.proveedor_insumo pi ON pi.id_proveedor = p.id_proveedor
-            GROUP BY p.id_proveedor, p.nombre, p.contacto, p.telefono, p.estado
+            GROUP BY p.id_proveedor, p.nombre, p.contacto, p.telefono, p.estado, p.fecha_inactivacion
             ORDER BY p.id_proveedor DESC;
         `);
         res.json(result.rows);
@@ -865,12 +954,22 @@ app.get('/api/proveedores', async (req, res) => {
     }
 });
 
+const validarTelefonoProveedor = (valor) => {
+    if (valor == null || String(valor).trim() === '') return { valido: true, telefono: null };
+    const original = String(valor).trim();
+    const digitos = original.replace(/\D/g, '');
+    const valido = /^\+?\d{11,14}$/.test(original.replace(/[\s().-]/g, ''));
+    return { valido, telefono: valido ? `+${digitos}` : null };
+};
+
 app.post('/api/proveedores', async (req, res) => {
     const nombre = String(req.body.nombre || '').trim();
     const contacto = String(req.body.contacto || '').trim() || null;
-    const telefono = String(req.body.telefono || '').trim() || null;
+    const telefonoValidado = validarTelefonoProveedor(req.body.telefono);
+    const telefono = telefonoValidado.telefono;
     const estado = String(req.body.estado || 'Activo').trim();
     if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
     if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
     try {
         const result = await pool.query(`
@@ -889,17 +988,27 @@ app.put('/api/proveedores/:id', async (req, res) => {
     const id = Number(req.params.id);
     const nombre = String(req.body.nombre || '').trim();
     const contacto = String(req.body.contacto || '').trim() || null;
-    const telefono = String(req.body.telefono || '').trim() || null;
+    const telefonoValidado = validarTelefonoProveedor(req.body.telefono);
+    const telefono = telefonoValidado.telefono;
     const estado = String(req.body.estado || 'Activo').trim();
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido' });
     if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
     if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
     try {
         const result = await pool.query(`
             UPDATE public.proveedor
-            SET nombre = $1, contacto = $2, telefono = $3, estado = $4
+            SET nombre = $1,
+                contacto = $2,
+                telefono = $3,
+                fecha_inactivacion = CASE
+                  WHEN $4 = 'Activo' THEN NULL
+                  WHEN LOWER(COALESCE(estado, 'activo')) <> 'inactivo' THEN NOW()
+                  ELSE COALESCE(fecha_inactivacion, NOW())
+                END,
+                estado = $4
             WHERE id_proveedor = $5
-            RETURNING id_proveedor, nombre, contacto, telefono, estado;
+            RETURNING id_proveedor, nombre, contacto, telefono, estado, fecha_inactivacion;
         `, [nombre, contacto, telefono, estado, id]);
         if (!result.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
         res.json(result.rows[0]);
@@ -912,19 +1021,111 @@ app.put('/api/proveedores/:id', async (req, res) => {
 app.patch('/api/proveedores/:id/estado', async (req, res) => {
     const id = Number(req.params.id);
     const estado = String(req.body.estado || '').trim();
-    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido' });
-    if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
+    const solicitanteIdUsuario = Number(req.body.solicitanteIdUsuario);
+    const passwordActual = String(req.body.passwordActual || '');
+
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'Identificador no válido.' });
+    }
+    if (!['Activo', 'Inactivo'].includes(estado)) {
+        return res.status(400).json({ error: 'Estado no válido.' });
+    }
+
+    // Para desactivar se exige validar la sesión actual de un administrador activo.
+    if (estado === 'Inactivo') {
+        if (!Number.isInteger(solicitanteIdUsuario) || solicitanteIdUsuario <= 0) {
+            return res.status(401).json({ error: 'No se pudo identificar tu sesión. Cierra sesión e inicia nuevamente.' });
+        }
+        if (!passwordActual) {
+            return res.status(400).json({ error: 'Debes ingresar la contraseña de tu sesión actual.' });
+        }
+
+        try {
+            const solicitanteRes = await pool.query(
+                `SELECT u.password, e.id_rol, e.estado
+                 FROM public.usuarios u
+                 INNER JOIN public.empleado e ON e.id_empleado = u.id_empleado
+                 WHERE u.id_usuario = $1`,
+                [solicitanteIdUsuario]
+            );
+
+            if (!solicitanteRes.rowCount) {
+                return res.status(401).json({ error: 'La sesión ya no es válida. Inicia sesión nuevamente.' });
+            }
+
+            const solicitante = solicitanteRes.rows[0];
+            if (Number(solicitante.id_rol) !== 2 || String(solicitante.estado || '').trim().toLowerCase() !== 'activo') {
+                return res.status(403).json({ error: 'Solo un administrador activo puede desactivar proveedores.' });
+            }
+            if (String(solicitante.password) !== passwordActual) {
+                return res.status(401).json({ error: 'La contraseña de tu sesión actual es incorrecta.' });
+            }
+        } catch (err) {
+            console.error('Error al validar la sesión para desactivar proveedor:', err);
+            return res.status(500).json({ error: 'No se pudo validar tu sesión. Inténtalo nuevamente.' });
+        }
+    }
+
     try {
-        const result = await pool.query(`UPDATE public.proveedor SET estado = $1 WHERE id_proveedor = $2 RETURNING id_proveedor, nombre, contacto, telefono, estado`, [estado, id]);
-        if (!result.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
-        res.json(result.rows[0]);
+        // Se usa un booleano separado para evitar inferencias ambiguas de tipos en PostgreSQL.
+        const result = await pool.query(`
+            UPDATE public.proveedor
+            SET fecha_inactivacion = CASE
+                    WHEN $3::boolean THEN
+                      CASE
+                        WHEN LOWER(COALESCE(estado, 'activo')) = 'inactivo'
+                          THEN COALESCE(fecha_inactivacion, NOW())
+                        ELSE NOW()
+                      END
+                    ELSE NULL
+                END,
+                estado = $1
+            WHERE id_proveedor = $2
+            RETURNING id_proveedor, nombre, contacto, telefono, estado, fecha_inactivacion
+        `, [estado, id, estado === 'Inactivo']);
+
+        if (!result.rowCount) {
+            return res.status(404).json({ error: 'No se encontró el proveedor.' });
+        }
+        return res.json({ success: true, ...result.rows[0] });
     } catch (err) {
         console.error('Error al cambiar estado del proveedor:', err);
-        res.status(500).json({ error: 'Error al cambiar el estado del proveedor' });
+        return res.status(500).json({
+            error: 'No se pudo cambiar el estado del proveedor. Verifica la conexión con la base de datos e inténtalo de nuevo.'
+        });
     }
 });
 
 // ==========================================
+app.delete('/api/proveedores/:id', async (req, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido.' });
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const compras = await client.query('SELECT 1 FROM public.compra_proveedor WHERE id_proveedor = $1 LIMIT 1', [id]);
+        if (compras.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Este proveedor tiene compras registradas. No se puede eliminar sin afectar el historial; puedes mantenerlo inactivo.' });
+        }
+        const proveedor = await client.query('SELECT id_proveedor FROM public.proveedor WHERE id_proveedor = $1 FOR UPDATE', [id]);
+        if (!proveedor.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Proveedor no encontrado.' });
+        }
+        await client.query('DELETE FROM public.proveedor_insumo WHERE id_proveedor = $1', [id]);
+        await client.query('DELETE FROM public.proveedor WHERE id_proveedor = $1', [id]);
+        await client.query('COMMIT');
+        res.json({ success: true, message: 'El proveedor se eliminó correctamente.' });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Error al eliminar proveedor:', err);
+        res.status(500).json({ error: 'No se pudo eliminar el proveedor.' });
+    } finally {
+        client.release();
+    }
+});
+
 // INSUMOS Y PRECIOS POR PROVEEDOR
 // Usa las tablas existentes public.insumo y public.proveedor_insumo.
 // ==========================================
@@ -1039,11 +1240,27 @@ const eliminarAccesosInactivosVencidos = async () => {
 
 // Teléfono internacional: guarda el código de país y el número en formato +<lada><número>.
 // La lada es configurable; no se fuerza +52 ni una longitud nacional fija.
-const validarTelefonoEmpleado = (valor) => {
+const validarTelefonoEmpleado = (valor, lada, numero) => {
+    const ladaLimpia = String(lada ?? '').replace(/\D/g, '');
+    const numeroLimpio = String(numero ?? '').replace(/\D/g, '');
+
+    // Cuando el frontend envía los campos separados, se valida cada parte
+    // para evitar que la lada se mezcle con el número nacional.
+    if (lada !== undefined || numero !== undefined) {
+        if (!numeroLimpio && (!valor || !String(valor).trim())) {
+            return { valido: true, telefono: null };
+        }
+        const valido = /^\d{2,3}$/.test(ladaLimpia) && /^\d{4,14}$/.test(numeroLimpio);
+        return { valido, telefono: valido ? `+${ladaLimpia} ${numeroLimpio}` : null };
+    }
+
     if (valor == null || String(valor).trim() === '') return { valido: true, telefono: null };
     const original = String(valor).trim();
+    const partes = original.match(/^\+(\d{2,3})[\s-]+(\d{4,14})$/);
+    if (partes) return { valido: true, telefono: `+${partes[1]} ${partes[2]}` };
+    // Compatibilidad con números antiguos sin separador.
     const digitos = original.replace(/\D/g, '');
-    const valido = /^\+?\d{5,18}$/.test(original.replace(/[\s().-]/g, ''));
+    const valido = /^\+?\d{6,17}$/.test(original.replace(/[\s().-]/g, ''));
     return { valido, telefono: valido ? `+${digitos}` : null };
 };
 
@@ -1087,14 +1304,14 @@ app.get('/api/empleados', async (req, res) => {
 
 // Registrar un nuevo empleado
 app.post('/api/empleados', async (req, res) => {
-    const { nombre, telefono, id_rol } = req.body;
+    const { nombre, telefono, id_rol, lada, telefonoNumero } = req.body;
     const nombreLimpio = String(nombre || '').trim();
     
     if (!nombreLimpio) {
         return res.status(400).json({ error: 'El nombre del empleado es obligatorio' });
     }
-    const telefonoValidado = validarTelefonoEmpleado(telefono);
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir un código de país de 1 a 4 dígitos y un número válido (4 a 14 dígitos).' });
+    const telefonoValidado = validarTelefonoEmpleado(telefono, lada, telefonoNumero);
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.' });
 
     try {
         const result = await pool.query(
@@ -1115,7 +1332,7 @@ app.put('/api/empleados/:id', async (req, res) => {
     const idEmpleado = Number(req.params.id);
     const nombre = String(req.body.nombre || '').trim();
     const telefonoRaw = req.body.telefono == null ? null : String(req.body.telefono).trim() || null;
-    const telefonoValidado = validarTelefonoEmpleado(telefonoRaw);
+    const telefonoValidado = validarTelefonoEmpleado(telefonoRaw, req.body.lada, req.body.telefonoNumero);
     const telefono = telefonoValidado.telefono;
     const idRol = Number(req.body.id_rol || 1);
     const nuevaPassword = req.body.password == null ? '' : String(req.body.password);
@@ -1124,7 +1341,7 @@ app.put('/api/empleados/:id', async (req, res) => {
         return res.status(400).json({ error: 'ID de empleado no válido.' });
     }
     if (!nombre) return res.status(400).json({ error: 'El nombre del empleado es obligatorio.' });
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir un código de país de 1 a 4 dígitos y un número válido (4 a 14 dígitos).' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.' });
     if (!Number.isInteger(idRol) || idRol <= 0) return res.status(400).json({ error: 'Selecciona un rol válido.' });
     if (nuevaPassword && nuevaPassword.length < 6) {
         return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
@@ -1178,23 +1395,90 @@ app.put('/api/empleados/:id', async (req, res) => {
 // que impiden borrar al empleado, la transacción se revierte y se conserva todo.
 app.delete('/api/empleados/:id', async (req, res) => {
     const idEmpleado = Number(req.params.id);
+    const solicitanteIdUsuario = Number(req.body?.solicitanteIdUsuario);
+
     if (!Number.isInteger(idEmpleado) || idEmpleado <= 0) {
         return res.status(400).json({ error: 'ID de empleado no válido.' });
     }
+    if (!Number.isInteger(solicitanteIdUsuario) || solicitanteIdUsuario <= 0) {
+        return res.status(401).json({ error: 'No se pudo identificar al administrador que solicita la eliminación.' });
+    }
+
     const client = await pool.connect();
+    let transaccionAbierta = false;
     try {
         await client.query('BEGIN');
-        const existe = await client.query('SELECT id_empleado FROM public.empleado WHERE id_empleado = $1 FOR UPDATE', [idEmpleado]);
-        if (!existe.rowCount) {
+        transaccionAbierta = true;
+
+        // Serializa las eliminaciones de administradores para evitar que dos
+        // solicitudes simultáneas dejen al sistema con menos de dos.
+        await client.query('SELECT pg_advisory_xact_lock(72190418)');
+
+        const solicitante = await client.query(`
+            SELECT e.id_empleado
+            FROM public.usuarios u
+            INNER JOIN public.empleado e ON e.id_empleado = u.id_empleado
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+            WHERE u.id_usuario = $1
+              AND LOWER(COALESCE(e.estado, 'activo')) = 'activo'
+              AND (e.id_rol = 2 OR LOWER(COALESCE(r.nombre, '')) = 'administrador')
+            FOR UPDATE OF e
+        `, [solicitanteIdUsuario]);
+
+        if (!solicitante.rowCount) {
             await client.query('ROLLBACK');
+            transaccionAbierta = false;
+            return res.status(403).json({ error: 'Solo un administrador activo puede eliminar empleados.' });
+        }
+
+        const objetivo = await client.query(`
+            SELECT e.id_empleado, e.id_rol, r.nombre AS rol
+            FROM public.empleado e
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+            WHERE e.id_empleado = $1
+            FOR UPDATE OF e
+        `, [idEmpleado]);
+
+        if (!objetivo.rowCount) {
+            await client.query('ROLLBACK');
+            transaccionAbierta = false;
             return res.status(404).json({ error: 'Empleado no encontrado.' });
         }
+
+        if (Number(objetivo.rows[0].id_empleado) === Number(solicitante.rows[0].id_empleado)) {
+            await client.query('ROLLBACK');
+            transaccionAbierta = false;
+            return res.status(403).json({ error: 'No puedes eliminar tu propia cuenta de administrador.' });
+        }
+
+        const esAdministradorObjetivo = Number(objetivo.rows[0].id_rol) === 2
+            || String(objetivo.rows[0].rol || '').trim().toLowerCase() === 'administrador';
+
+        if (esAdministradorObjetivo) {
+            const conteo = await client.query(`
+                SELECT COUNT(DISTINCT e.id_empleado)::int AS total
+                FROM public.empleado e
+                LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+                WHERE LOWER(COALESCE(e.estado, 'activo')) = 'activo'
+                  AND (e.id_rol = 2 OR LOWER(COALESCE(r.nombre, '')) = 'administrador')
+            `);
+
+            if (Number(conteo.rows[0].total) <= 2) {
+                await client.query('ROLLBACK');
+                transaccionAbierta = false;
+                return res.status(409).json({
+                    error: 'No se puede eliminar este administrador porque deben permanecer al menos 2 administradores activos en el sistema.'
+                });
+            }
+        }
+
         await client.query('DELETE FROM public.usuarios WHERE id_empleado = $1', [idEmpleado]);
         await client.query('DELETE FROM public.empleado WHERE id_empleado = $1', [idEmpleado]);
         await client.query('COMMIT');
+        transaccionAbierta = false;
         res.json({ success: true, message: 'Empleado y credenciales eliminados.' });
     } catch (err) {
-        await client.query('ROLLBACK');
+        if (transaccionAbierta) await client.query('ROLLBACK');
         console.error('Error al eliminar empleado:', err);
         res.status(409).json({ error: 'No se puede eliminar porque el empleado tiene registros relacionados (por ejemplo, nómina o movimientos). Se conservaron sus datos.' });
     } finally {
@@ -1240,36 +1524,90 @@ app.post('/api/empleados/:id/usuario', async (req, res) => {
 
 app.patch('/api/empleados/:id/estado', async (req, res) => {
   const id_empleado = Number(req.params.id);
-  const { estado } = req.body;
+  const estado = String(req.body.estado || '');
+  const solicitanteIdUsuario = Number(req.body.solicitanteIdUsuario);
+  const passwordActual = String(req.body.passwordActual || '');
 
-  if (!Number.isInteger(id_empleado) || id_empleado <= 0) {
-    return res.status(400).json({ error: 'ID de empleado no válido' });
-  }
+  if (!Number.isInteger(id_empleado) || id_empleado <= 0) return res.status(400).json({ error: 'ID de empleado no válido.' });
+  if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido.' });
+  if (!Number.isInteger(solicitanteIdUsuario) || solicitanteIdUsuario <= 0) return res.status(401).json({ error: 'No se pudo identificar tu sesión. Cierra sesión e inicia nuevamente.' });
+  if (estado === 'Inactivo' && !passwordActual) return res.status(400).json({ error: 'Debes ingresar la contraseña de tu sesión actual.' });
 
-  if (!['Activo', 'Inactivo'].includes(estado)) {
-    return res.status(400).json({ error: 'Estado no válido' });
-  }
-
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+    // Bloquea primero las filas de administradores en un orden fijo.
+    // Así las operaciones simultáneas no pueden desactivar dos administradores a la vez.
+    await client.query(`SELECT id_empleado FROM public.empleado WHERE id_rol = 2 ORDER BY id_empleado FOR UPDATE`);
+
+    const solicitanteRes = await client.query(
+      `SELECT u.id_usuario, u.password, e.id_empleado, e.estado, e.id_rol
+       FROM public.usuarios u
+       JOIN public.empleado e ON e.id_empleado = u.id_empleado
+       WHERE u.id_usuario = $1`,
+      [solicitanteIdUsuario]
+    );
+    if (!solicitanteRes.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'La sesión ya no es válida. Inicia sesión nuevamente.' });
+    }
+    const solicitante = solicitanteRes.rows[0];
+    if (Number(solicitante.id_rol) !== 2 || String(solicitante.estado || '').toLowerCase() !== 'activo') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Solo un administrador activo puede cambiar estados de empleados.' });
+    }
+    if (estado === 'Inactivo' && solicitante.password !== passwordActual) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'La contraseña de tu sesión actual es incorrecta.' });
+    }
+
+    const objetivoRes = await client.query(
+      `SELECT id_empleado, nombre, estado, id_rol FROM public.empleado WHERE id_empleado = $1 FOR UPDATE`,
+      [id_empleado]
+    );
+    if (!objetivoRes.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Empleado no encontrado.' });
+    }
+    const objetivo = objetivoRes.rows[0];
+
+    if (estado === 'Inactivo') {
+      if (Number(objetivo.id_rol) === 2 && Number(objetivo.id_empleado) === Number(solicitante.id_empleado)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'No puedes desactivar tu propio acceso de administrador.' });
+      }
+      if (Number(objetivo.id_rol) === 2 && String(objetivo.estado || '').toLowerCase() === 'activo') {
+        const countRes = await client.query(
+          `SELECT COUNT(*)::int AS total FROM public.empleado
+           WHERE id_rol = 2 AND LOWER(COALESCE(estado, 'activo')) = 'activo'`
+        );
+        const total = Number(countRes.rows[0].total || 0);
+        if (total <= 2) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: `No puedes desactivar a este administrador. Deben permanecer al menos 2 administradores activos y actualmente hay ${total}.` });
+        }
+      }
+    }
+
+    const result = await client.query(
       `UPDATE public.empleado
        SET estado = $1,
            fecha_inactivacion = CASE
-             WHEN $1 = 'Inactivo' THEN COALESCE(fecha_inactivacion, NOW())
+             WHEN $3::boolean THEN COALESCE(fecha_inactivacion, NOW())
              ELSE NULL
            END
-       WHERE id_empleado = $2 RETURNING *`,
-      [estado, id_empleado]
+       WHERE id_empleado = $2
+       RETURNING id_empleado, nombre, estado, fecha_inactivacion, id_rol`,
+      [estado, id_empleado, estado === 'Inactivo']
     );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Empleado no encontrado' });
-    }
-
-    res.json({ success: true, empleado: result.rows[0] });
+    await client.query('COMMIT');
+    return res.json({ success: true, empleado: result.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Error al cambiar el estado del empleado:', err);
-    res.status(500).json({ error: 'Error al cambiar el estado' });
+    return res.status(500).json({ error: 'Error al cambiar el estado del empleado.' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1385,8 +1723,20 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+    try {
+        await pool.query(`
+            ALTER TABLE public.ventas
+            ADD COLUMN IF NOT EXISTS id_usuario INTEGER
+            REFERENCES public.usuarios(id_usuario);
+        `);
+        await prepararProveedores();
+        await limpiarProveedoresInactivosVencidos();
+    } catch (err) {
+        console.error('No se pudo preparar la fecha de inactivación de proveedores:', err.message);
+    }
     eliminarAccesosInactivosVencidos();
     setInterval(eliminarAccesosInactivosVencidos, 60 * 60 * 1000);
+    setInterval(limpiarProveedoresInactivosVencidos, 60 * 60 * 1000);
 });
