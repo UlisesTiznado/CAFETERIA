@@ -112,7 +112,13 @@ app.get('/api/menu', async (req, res) => {
         const [tamanosRes, extrasRes] = await Promise.all([
             pool.query(`
                 SELECT pt.id_producto, t.id_tamano, t.nombre, t.modificador_precio,
-                       pt.factor_ingredientes, t.id_insumo_vaso
+                       pt.factor_ingredientes, t.id_insumo_vaso,
+                       COALESCE((
+                           SELECT MIN(FLOOR(i.stock / NULLIF(r.cantidad_usada * NULLIF(pt.factor_ingredientes, 0), 0)))
+                           FROM public.receta r
+                           JOIN public.insumo i ON i.id_insumo = r.id_insumo
+                           WHERE r.id_producto = pt.id_producto
+                       ), 0) AS stock
                 FROM public.producto_tamano pt
                 JOIN public.tamano t ON t.id_tamano = pt.id_tamano
                 WHERE t.nombre ILIKE '%oz%'
@@ -145,7 +151,8 @@ app.get('/api/menu', async (req, res) => {
                 id_tamano: Number(t.id_tamano), nombre: t.nombre,
                 modificador_precio: Number(t.modificador_precio || 0),
                 factor_ingredientes: Number(t.factor_ingredientes || 1),
-                id_insumo_vaso: t.id_insumo_vaso == null ? null : Number(t.id_insumo_vaso)
+                id_insumo_vaso: t.id_insumo_vaso == null ? null : Number(t.id_insumo_vaso),
+                stock: Number(t.stock || 0)
             });
         }
         const extrasPorProducto = new Map();
@@ -249,7 +256,8 @@ app.get('/api/ventas', async (req, res) => {
 
         for (let v of ventasRes.rows) {
             const detalleRes = await pool.query(`
-                SELECT dv.cantidad, p.nombre, dv.precio_unitario AS precio, dv.subtotal
+                SELECT dv.cantidad, p.nombre, dv.precio_unitario AS precio, dv.subtotal,
+                       dv.personalizacion, dv.id_producto_padre
                 FROM public.detalle_ventas dv
                 JOIN public.productos p ON dv.id_producto = p.id_producto
                 WHERE dv.id_venta = $1
@@ -427,9 +435,15 @@ app.post('/api/ventas', async (req, res) => {
         // 2. Registrar detalles e impactar inventarios con tamaños, empaques, tapas y repostería directa
         for (const item of detalles) {
             await client.query(
-                `INSERT INTO public.detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, id_tamano, subtotal)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                [id_venta, item.id_producto, item.cantidad, item.precio, item.id_tamano ?? null, item.cantidad * item.precio]
+                `INSERT INTO public.detalle_ventas
+                    (id_venta, id_producto, cantidad, precio_unitario, id_tamano, subtotal, personalizacion, id_producto_padre)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                [
+                    id_venta, item.id_producto, item.cantidad, item.precio,
+                    item.id_tamano ?? null, item.cantidad * item.precio,
+                    String(item.customization || '').trim() || null,
+                    item.id_producto_padre == null ? null : Number(item.id_producto_padre)
+                ]
             );
 
             // El tipo de inventario se determina por la configuración del producto,

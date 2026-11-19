@@ -1038,6 +1038,7 @@ const confirmarCambioEstadoEmpleado = async () => {
       ...productoPersonalizando,
       precio: precioProducto,
       id_tamano: tamano?.id_tamano ?? tamano?.id ?? null,
+      stock: tamano?.stock ?? productoPersonalizando.stock,
       extras_seleccionados: [], // Los extras se registran como renglones separados para evitar doble consumo/cobro.
       customization: customizationParts.join(' · '),
       es_fria: esFria
@@ -1049,6 +1050,7 @@ const confirmarCambioEstadoEmpleado = async () => {
         ...extra,
         precio: Number(extra.precio || 0),
         customization: `(Extra en ${productoPersonalizando.nombre})`,
+        id_producto_padre: productoPersonalizando.id_producto,
         es_extra: true
       });
     });
@@ -1241,7 +1243,9 @@ const confirmarCambioEstadoEmpleado = async () => {
         customization: item.customization || '',
         id_tamano: item.id_tamano ?? null,
         extras_seleccionados: item.extras_seleccionados || [],
-        es_fria: item.es_fria || false
+        es_fria: item.es_fria || false,
+        id_producto_padre: item.id_producto_padre ?? null,
+        es_extra: item.es_extra === true
       }))
     };
 
@@ -2745,7 +2749,11 @@ const confirmarCambioEstadoEmpleado = async () => {
                       <tbody>
                         {ticketSeleccionado.detalles.map((d, idx) => (
                           <tr key={idx}>
-                            <td>{d.nombre}</td>
+                            <td>
+                              <strong>{d.nombre}</strong>
+                              {d.personalizacion && <small style={{ display: 'block', color: '#64748b', marginTop: '3px' }}>{d.personalizacion}</small>}
+                              {d.id_producto_padre && <small style={{ display: 'block', color: '#64748b' }}>Extra asociado a la bebida principal</small>}
+                            </td>
                             <td>{money(d.precio)}</td>
                             <td>{d.cantidad}</td>
                             <td>{money(d.subtotal)}</td>
@@ -3227,7 +3235,10 @@ const confirmarCambioEstadoEmpleado = async () => {
                             className={`option-card${seleccionado ? ' selected' : ''}`}
                           >
                             <span className="option-name">{tam.nombre}</span>
-                            <span className="option-price">${Number(tam.precio != null ? tam.precio : Number(productoPersonalizando.precio || 0) + Number(tam.modificador_precio || 0)).toFixed(2)}</span>
+                            <span className="option-price">
+                              ${Number(tam.precio != null ? tam.precio : Number(productoPersonalizando.precio || 0) + Number(tam.modificador_precio || 0)).toFixed(2)}
+                              <small style={{ display: 'block', fontWeight: 400, opacity: 0.75 }}>{Number(tam.stock || 0)} disponibles</small>
+                            </span>
                           </button>
                         );
                       })}
