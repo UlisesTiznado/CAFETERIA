@@ -4108,3 +4108,566 @@ body {
 .status-filter-select { min-height:40px; min-width:132px; padding:8px 34px 8px 11px; border:1px solid var(--line); border-radius:var(--r-md); background:#fff; color:var(--ink); font:inherit; cursor:pointer; }
 .status-filter-select:focus { border-color:var(--blue-500); outline:3px solid rgba(79,124,172,.16); }
 @media (max-width: 720px) { .status-filter-group { width:100%; justify-content:stretch; } .status-filter-group .suppliers-search { flex:1; min-width:100% !important; } .status-filter-label { width:100%; justify-content:space-between; } .status-filter-label .status-filter-select { flex:1; } }
+
+
+/* Validación en línea para formularios de empleados y accesos */
+.field-hint {
+  display: block;
+  margin-top: 7px;
+  color: var(--ink-mute);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.field-hint-error {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+
+
+/* ==========================================================
+   RESPONSIVE GLOBAL · CAFETERÍA ORIGEN
+   Ajustes transversales para escritorio, tablet y móvil.
+   Las tablas conservan su tamaño legible y se desplazan
+   horizontalmente dentro de su contenedor en pantallas pequeñas.
+========================================================== */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+}
+
+html {
+  overflow-x: clip;
+  scroll-behavior: smooth;
+}
+
+body {
+  overflow-x: clip;
+}
+
+.app-container,
+.pos-body,
+.main,
+.inventory-view,
+.management-page,
+.suppliers-page,
+.accounting-page {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-container {
+  min-height: min(740px, calc(100vh - 24px));
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+/* Contenedores de tablas: no encoger columnas, permitir gesto táctil. */
+.inventory-table-wrapper,
+.sales-table-wrapper,
+.suppliers-table-wrap,
+.purchase-ticket-table-wrap,
+.ticket-modal-table-wrap,
+.table-responsive,
+.accounting-admin-card,
+.purchases-history-card {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+}
+
+/* Las tablas mantienen un ancho útil; el contenedor hace el scroll. */
+.inventory-table,
+.suppliers-table,
+.purchase-ticket-table,
+.ticket-modal-table-wrap table,
+.sales-table-wrapper table,
+.accounting-admin-card table,
+.purchases-history-card table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+.inventory-table th,
+.inventory-table td,
+.suppliers-table th,
+.suppliers-table td {
+  white-space: nowrap;
+}
+
+/* Evita que elementos flex/grid provoquen desbordamiento de toda la página. */
+.topbar > *,
+.top-right > *,
+.header-row > *,
+.management-page-header > *,
+.inventory-header > *,
+.sales-header > *,
+.sales-header-actions > *,
+.employees-date-filters > *,
+.inventory-controls > *,
+.inventory-filter-group > *,
+.accounting-section-heading > * {
+  min-width: 0;
+}
+
+.management-page-header,
+.inventory-header,
+.sales-header,
+.purchases-history-heading,
+.accounting-section-heading {
+  flex-wrap: wrap;
+}
+
+.management-page input,
+.management-page select,
+.inventory-view input,
+.inventory-view select,
+.management-page textarea,
+.inventory-view textarea {
+  max-width: 100%;
+}
+
+/* Formularios y barras de filtros: permiten saltar de línea sin desbordar. */
+.employees-toolbar,
+.employees-date-filters,
+.sales-filters-panel,
+.purchases-filter,
+.accounting-date-toolbar,
+.accounting-date-fields,
+.inventory-controls,
+.inventory-filter-group,
+.suppliers-search-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.employees-date-filters,
+.purchases-filter,
+.accounting-date-fields {
+  flex-wrap: wrap;
+}
+
+.employees-date-filters label,
+.purchases-filter label,
+.accounting-date-fields label {
+  min-width: 0;
+}
+
+.employees-date-filters input,
+.purchases-filter input,
+.accounting-date-fields input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Modales: nunca deben superar el viewport. */
+.modal-overlay,
+.ticket-modal-overlay,
+.purchase-ticket-overlay {
+  padding: clamp(8px, 2.5vw, 24px);
+}
+
+.payment-modal,
+.confirm-modal,
+.ticket-detail-modal,
+.purchase-ticket-modal,
+.accounting-form-modal,
+.accounting-detail-modal,
+.supplier-form-modal,
+.purchase-registration-modal {
+  box-sizing: border-box;
+  width: min(100%, 720px);
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.modal-actions {
+  flex-wrap: wrap;
+}
+
+.modal-actions button {
+  min-width: 0;
+}
+
+/* Contenido con texto largo y tarjetas en columnas flexibles. */
+.kpi-grid,
+.accounting-summary-grid,
+.products-grid {
+  min-width: 0;
+}
+
+.kpi-card,
+.accounting-summary-card,
+.product-card {
+  min-width: 0;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .app-container {
+    width: 98%;
+    margin: 12px auto;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .top-right {
+    flex-wrap: wrap;
+  }
+
+  .management-page,
+  .inventory-view {
+    padding: 22px 18px;
+  }
+
+  .management-page-header,
+  .inventory-header,
+  .sales-header {
+    align-items: flex-start;
+  }
+}
+
+/* Celulares y tabletas pequeñas */
+@media (max-width: 768px) {
+  html,
+  body {
+    width: 100%;
+    overflow-x: clip;
+  }
+
+  .app-container {
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+  }
+
+  .topbar {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1 1 180px;
+  }
+
+  .top-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .top-right button,
+  .top-right a {
+    flex: 0 1 auto;
+  }
+
+  .pos-body {
+    min-height: 0;
+  }
+
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page {
+    width: 100%;
+    min-width: 0;
+    padding: 18px 14px;
+  }
+
+  .header-row,
+  .management-page-header,
+  .inventory-header,
+  .sales-header {
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .header-row {
+    flex-direction: column;
+  }
+
+  .management-page-header > *,
+  .inventory-header > * {
+    max-width: 100%;
+  }
+
+  .management-page-header button,
+  .inventory-header button {
+    max-width: 100%;
+  }
+
+  .employees-toolbar,
+  .employees-date-filters,
+  .sales-header-actions,
+  .inventory-controls,
+  .accounting-date-toolbar {
+    width: 100%;
+  }
+
+  .employees-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .employees-toolbar input[type="search"],
+  .sales-search-field,
+  .suppliers-search {
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .sales-filters-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-search-field {
+    grid-column: 1 / -1;
+  }
+
+  .inventory-table-wrapper,
+  .sales-table-wrapper,
+  .suppliers-table-wrap,
+  .purchase-ticket-table-wrap,
+  .ticket-modal-table-wrap,
+  .table-responsive,
+  .accounting-admin-card,
+  .purchases-history-card {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .inventory-table,
+  .suppliers-table {
+    min-width: 720px;
+  }
+
+  .sales-table-wrapper table {
+    min-width: 680px;
+  }
+
+  .employees-pagination,
+  .pagination-controls {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .employees-pagination > *,
+  .pagination-controls > * {
+    min-width: 0;
+  }
+
+  .employees-pagination > div {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .modal-overlay,
+  .ticket-modal-overlay,
+  .purchase-ticket-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+  }
+
+  .payment-modal,
+  .confirm-modal,
+  .ticket-detail-modal,
+  .purchase-ticket-modal,
+  .accounting-form-modal,
+  .accounting-detail-modal,
+  .supplier-form-modal,
+  .purchase-registration-modal {
+    width: 100%;
+    max-width: 600px;
+    max-height: calc(100dvh - 20px);
+    padding: 20px;
+  }
+}
+
+/* Teléfonos */
+@media (max-width: 540px) {
+  .topbar {
+    align-items: stretch;
+  }
+
+  .brand-name {
+    font-size: 18px;
+  }
+
+  .top-right {
+    gap: 7px;
+  }
+
+  .top-right button,
+  .top-right a,
+  .view-nav-btn {
+    min-height: 40px;
+  }
+
+  .user-badge {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page {
+    padding: 15px 10px;
+  }
+
+  .title {
+    font-size: clamp(22px, 6vw, 27px);
+  }
+
+  .sales-filters-panel {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .sales-search-field {
+    grid-column: auto;
+  }
+
+  .employees-date-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .employees-date-filters label,
+  .employees-date-filters button {
+    width: 100%;
+  }
+
+  .employees-date-filters input,
+  .employees-date-filters select {
+    width: 100%;
+  }
+
+  .employees-pagination {
+    align-items: stretch;
+  }
+
+  .employees-pagination > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pagination-controls button,
+  .employees-pagination button {
+    min-height: 40px;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .modal-actions button {
+    width: 100%;
+    min-height: 42px;
+  }
+
+  .payment-modal,
+  .confirm-modal,
+  .ticket-detail-modal,
+  .purchase-ticket-modal,
+  .accounting-form-modal,
+  .accounting-detail-modal,
+  .supplier-form-modal,
+  .purchase-registration-modal {
+    padding: 17px 14px;
+    border-radius: 16px;
+  }
+
+  /* Desplazamiento horizontal más evidente en tablas. */
+  .inventory-table-wrapper,
+  .sales-table-wrapper,
+  .suppliers-table-wrap,
+  .purchase-ticket-table-wrap,
+  .ticket-modal-table-wrap,
+  .table-responsive,
+  .accounting-admin-card,
+  .purchases-history-card {
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+  }
+
+  .inventory-table,
+  .suppliers-table {
+    min-width: 680px;
+  }
+}
+
+/* Teléfonos muy estrechos */
+@media (max-width: 360px) {
+  .topbar {
+    padding: 10px;
+  }
+
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page {
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .top-right {
+    gap: 5px;
+  }
+
+  .top-right button,
+  .top-right a {
+    font-size: 11px;
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+
+  .products-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

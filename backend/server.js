@@ -968,8 +968,28 @@ app.get('/api/proveedores', async (req, res) => {
     }
 });
 
+const validarNombreProveedor = (valor) => {
+    const nombre = String(valor || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    const letras = (nombre.match(/\p{L}/gu) || []).length;
+    if (!nombre) return { valido: false, nombre, error: 'El nombre del proveedor es obligatorio.' };
+    if (nombre.length > 150 || letras < 4) return { valido: false, nombre, error: 'El nombre debe contener al menos 4 letras (sin contar espacios) y no superar 150 caracteres.' };
+    if (/[\p{C}<>={}\[\]\\]/u.test(nombre) || /[^\p{L}\p{N}\s]{3,}/u.test(nombre)) {
+        return { valido: false, nombre, error: 'El nombre contiene caracteres o secuencias no permitidas. Evita usar símbolos repetidos como "...".' };
+    }
+    return { valido: true, nombre, error: '' };
+};
+
+const validarCorreoProveedor = (valor) => {
+    const correo = String(valor || '');
+    const formato = /^[A-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)*\.[A-Z]{2,63}$/i;
+    const [local] = correo.split('@');
+    const valido = correo.length <= 254 && !/\s/.test(correo) && formato.test(correo) &&
+        !!local && !local.startsWith('.') && !local.endsWith('.') && !local.includes('..');
+    return { valido, correo, error: 'Ingresa un correo electrónico válido, sin espacios (ejemplo: contacto@empresa.com).' };
+};
+
 const validarTelefonoProveedor = (valor) => {
-    if (valor == null || String(valor).trim() === '') return { valido: true, telefono: null };
+    if (valor == null || String(valor).trim() === '') return { valido: false, telefono: null };
     const original = String(valor).trim();
     const digitos = original.replace(/\D/g, '');
     const valido = /^\+?\d{11,14}$/.test(original.replace(/[\s().-]/g, ''));
@@ -977,20 +997,20 @@ const validarTelefonoProveedor = (valor) => {
 };
 
 app.post('/api/proveedores', async (req, res) => {
-    const nombre = String(req.body.nombre || '').trim();
-    const contacto = String(req.body.contacto || '').trim() || null;
+    const nombreValidado = validarNombreProveedor(req.body.nombre);
+    const correoValidado = validarCorreoProveedor(req.body.contacto);
     const telefonoValidado = validarTelefonoProveedor(req.body.telefono);
-    const telefono = telefonoValidado.telefono;
     const estado = String(req.body.estado || 'Activo').trim();
-    if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
+    if (!nombreValidado.valido) return res.status(400).json({ error: nombreValidado.error });
+    if (!correoValidado.valido) return res.status(400).json({ error: correoValidado.error });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono es obligatorio: incluye una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
     if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
     try {
         const result = await pool.query(`
             INSERT INTO public.proveedor (nombre, contacto, telefono, estado)
             VALUES ($1, $2, $3, $4)
             RETURNING id_proveedor, nombre, contacto, telefono, estado;
-        `, [nombre, contacto, telefono, estado]);
+        `, [nombreValidado.nombre, correoValidado.correo, telefonoValidado.telefono, estado]);
         res.status(201).json(result.rows[0]);
     } catch (err) {
         console.error('Error al registrar proveedor:', err);
@@ -1000,14 +1020,14 @@ app.post('/api/proveedores', async (req, res) => {
 
 app.put('/api/proveedores/:id', async (req, res) => {
     const id = Number(req.params.id);
-    const nombre = String(req.body.nombre || '').trim();
-    const contacto = String(req.body.contacto || '').trim() || null;
+    const nombreValidado = validarNombreProveedor(req.body.nombre);
+    const correoValidado = validarCorreoProveedor(req.body.contacto);
     const telefonoValidado = validarTelefonoProveedor(req.body.telefono);
-    const telefono = telefonoValidado.telefono;
     const estado = String(req.body.estado || 'Activo').trim();
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Identificador no válido' });
-    if (!nombre) return res.status(400).json({ error: 'El nombre del proveedor es obligatorio' });
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono debe incluir una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
+    if (!nombreValidado.valido) return res.status(400).json({ error: nombreValidado.error });
+    if (!correoValidado.valido) return res.status(400).json({ error: correoValidado.error });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'El teléfono es obligatorio: incluye una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.' });
     if (!['Activo', 'Inactivo'].includes(estado)) return res.status(400).json({ error: 'Estado no válido' });
     try {
         const result = await pool.query(`
@@ -1023,7 +1043,7 @@ app.put('/api/proveedores/:id', async (req, res) => {
                 estado = $4
             WHERE id_proveedor = $5
             RETURNING id_proveedor, nombre, contacto, telefono, estado, fecha_inactivacion;
-        `, [nombre, contacto, telefono, estado, id]);
+        `, [nombreValidado.nombre, correoValidado.correo, telefonoValidado.telefono, estado, id]);
         if (!result.rowCount) return res.status(404).json({ error: 'Proveedor no encontrado' });
         res.json(result.rows[0]);
     } catch (err) {
@@ -1258,25 +1278,87 @@ const validarTelefonoEmpleado = (valor, lada, numero) => {
     const ladaLimpia = String(lada ?? '').replace(/\D/g, '');
     const numeroLimpio = String(numero ?? '').replace(/\D/g, '');
 
-    // Cuando el frontend envía los campos separados, se valida cada parte
-    // para evitar que la lada se mezcle con el número nacional.
     if (lada !== undefined || numero !== undefined) {
-        if (!numeroLimpio && (!valor || !String(valor).trim())) {
-            return { valido: true, telefono: null };
-        }
-        const valido = /^\d{2,3}$/.test(ladaLimpia) && /^\d{4,14}$/.test(numeroLimpio);
+        const telefonoCapturado = Boolean(numeroLimpio || (valor && String(valor).trim()));
+        if (!telefonoCapturado) return { valido: true, telefono: null };
+        const valido = /^\d{1,4}$/.test(ladaLimpia) && /^\d{10}$/.test(numeroLimpio);
         return { valido, telefono: valido ? `+${ladaLimpia} ${numeroLimpio}` : null };
     }
 
     if (valor == null || String(valor).trim() === '') return { valido: true, telefono: null };
     const original = String(valor).trim();
-    const partes = original.match(/^\+(\d{2,3})[\s-]+(\d{4,14})$/);
+    const partes = original.match(/^\+(\d{1,4})[\s-]+(\d{10})$/);
     if (partes) return { valido: true, telefono: `+${partes[1]} ${partes[2]}` };
-    // Compatibilidad con números antiguos sin separador.
     const digitos = original.replace(/\D/g, '');
-    const valido = /^\+?\d{6,17}$/.test(original.replace(/[\s().-]/g, ''));
-    return { valido, telefono: valido ? `+${digitos}` : null };
+    return { valido: false, telefono: null };
 };
+
+const validarPasswordEmpleadoServidor = (valor) => {
+    const clave = String(valor ?? '');
+
+    if (!clave) return 'La contraseña es obligatoria.';
+    if (/\\s/.test(clave)) return 'La contraseña no puede contener espacios.';
+    if (clave.length < 4 || clave.length > 8) {
+        return 'La contraseña debe tener entre 4 y 8 caracteres.';
+    }
+    if ((clave.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || []).length < 4) {
+        return 'La contraseña debe contener al menos 4 letras.';
+    }
+
+    const normalizada = clave.toLowerCase();
+
+    if (/^(.)\\1{3,}$/.test(normalizada)) {
+        return 'No uses el mismo carácter repetido.';
+    }
+    if (/^(password|contraseña|contrasena|admin|qwerty|usuario|abcdef|abcd|1234|1111|0000)$/i.test(normalizada)) {
+        return 'Elige una contraseña menos predecible.';
+    }
+
+    for (let i = 0; i <= normalizada.length - 4; i++) {
+        const a = normalizada.charCodeAt(i);
+        const b = normalizada.charCodeAt(i + 1);
+        const c = normalizada.charCodeAt(i + 2);
+        const d = normalizada.charCodeAt(i + 3);
+
+        if (
+            (b === a + 1 && c === b + 1 && d === c + 1) ||
+            (b === a - 1 && c === b - 1 && d === c - 1)
+        ) {
+            return 'No uses secuencias consecutivas como abcd o 1234.';
+        }
+    }
+
+    return '';
+};
+
+const validarCredencialesEmpleado = (username, password) => {
+    const usuario = String(username ?? '');
+    const clave = String(password ?? '');
+    if (!usuario) return 'El nombre de usuario es obligatorio.';
+    if (/\s/.test(usuario)) return 'El usuario no puede contener espacios.';
+    if (!/^[A-Za-z0-9._-]+$/.test(usuario)) return 'El usuario solo puede contener letras, números, punto, guion o guion bajo.';
+    if ((usuario.match(/[A-Za-z]/g) || []).length < 6) return 'El nombre de usuario debe contener al menos 6 letras.';
+
+    if (!clave) return 'La contraseña es obligatoria.';
+    if (/\s/.test(clave)) return 'La contraseña no puede contener espacios.';
+    if (clave.length < 4 || clave.length > 8) return 'La contraseña debe tener entre 4 y 8 caracteres.';
+    if ((clave.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || []).length < 4) return 'La contraseña debe contener al menos 4 letras.';
+    const normalizada = clave.toLowerCase();
+    if (/^(.)\1{3,}$/.test(normalizada)) return 'No uses el mismo carácter repetido.';
+    if (/^(password|contraseña|contrasena|admin|qwerty|usuario|abcdef|abcd|1234|1111|0000)$/i.test(normalizada)) return 'Elige una contraseña menos predecible.';
+    for (let i = 0; i <= normalizada.length - 4; i++) {
+        const a = normalizada.charCodeAt(i);
+        const b = normalizada.charCodeAt(i + 1);
+        const c = normalizada.charCodeAt(i + 2);
+        const d = normalizada.charCodeAt(i + 3);
+        if ((b === a + 1 && c === b + 1 && d === c + 1) ||
+            (b === a - 1 && c === b - 1 && d === c - 1)) {
+            return 'No uses secuencias consecutivas como abcd o 1234.';
+        }
+    }
+    return '';
+};
+
 
 // Obtener lista de empleados con su rol y usuario asociado
 app.get('/api/empleados', async (req, res) => {
@@ -1325,7 +1407,7 @@ app.post('/api/empleados', async (req, res) => {
         return res.status(400).json({ error: 'El nombre del empleado es obligatorio' });
     }
     const telefonoValidado = validarTelefonoEmpleado(telefono, lada, telefonoNumero);
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener de 1 a 4 dígitos y el número telefónico exactamente 10 dígitos.' });
 
     try {
         const result = await pool.query(
@@ -1355,10 +1437,11 @@ app.put('/api/empleados/:id', async (req, res) => {
         return res.status(400).json({ error: 'ID de empleado no válido.' });
     }
     if (!nombre) return res.status(400).json({ error: 'El nombre del empleado es obligatorio.' });
-    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.' });
+    if (!telefonoValidado.valido) return res.status(400).json({ error: 'La lada debe tener de 1 a 4 dígitos y el número telefónico exactamente 10 dígitos.' });
     if (!Number.isInteger(idRol) || idRol <= 0) return res.status(400).json({ error: 'Selecciona un rol válido.' });
-    if (nuevaPassword && nuevaPassword.length < 6) {
-        return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+    if (nuevaPassword) {
+        const errorPassword = validarPasswordEmpleadoServidor(nuevaPassword);
+        if (errorPassword) return res.status(400).json({ error: errorPassword });
     }
 
     const client = await pool.connect();
@@ -1503,15 +1586,14 @@ app.delete('/api/empleados/:id', async (req, res) => {
 // Crear usuario y contraseña para un empleado existente
 app.post('/api/empleados/:id/usuario', async (req, res) => {
     const id_empleado = Number(req.params.id);
-    const username = String(req.body.username || '').trim();
-    const password = String(req.body.password || '').trim();
+    const username = String(req.body.username ?? '');
+    const password = String(req.body.password ?? '');
 
     if (!Number.isInteger(id_empleado) || id_empleado <= 0) {
         return res.status(400).json({ error: 'ID de empleado no válido' });
     }
-    if (!username || !password) {
-        return res.status(400).json({ error: 'El usuario y la contraseña son obligatorios' });
-    }
+    const errorCredenciales = validarCredencialesEmpleado(username, password);
+    if (errorCredenciales) return res.status(400).json({ error: errorCredenciales });
 
     try {
         const existe = await pool.query(

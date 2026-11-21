@@ -27,6 +27,40 @@ function ReceiptIcon() {
   );
 }
 
+
+// Validaciones de acceso: se muestran mientras se escribe y también al enviar.
+const validarUsernameEmpleado = (valor) => {
+  const username = String(valor || '');
+  if (!username) return 'El nombre de usuario es obligatorio.';
+  if (/\s/.test(username)) return 'El usuario no puede contener espacios.';
+  if (!/^[A-Za-z0-9._-]+$/.test(username)) return 'Usa solo letras, números, punto, guion o guion bajo.';
+  const letras = (username.match(/[A-Za-z]/g) || []).length;
+  if (letras < 6) return 'Escribe al menos 6 letras; los números y símbolos no cuentan.';
+  return '';
+};
+
+const validarPasswordEmpleado = (valor) => {
+  const password = String(valor || '');
+  if (!password) return 'La contraseña es obligatoria.';
+  if (/\s/.test(password)) return 'La contraseña no puede contener espacios.';
+  if (password.length < 4 || password.length > 8) return 'La contraseña debe tener entre 4 y 8 caracteres.';
+  if ((password.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g) || []).length < 4) return 'Usa al menos 4 letras.';
+  const normalizada = password.toLowerCase();
+  if (/^(.)\1{3,}$/.test(normalizada)) return 'No uses el mismo carácter repetido.';
+  if (/^(password|contraseña|contrasena|admin|qwerty|usuario|abcdef|abcd|1234|1111|0000)$/i.test(normalizada)) return 'Elige una contraseña menos predecible.';
+  for (let i = 0; i <= normalizada.length - 4; i++) {
+    const a = normalizada.charCodeAt(i);
+    const b = normalizada.charCodeAt(i + 1);
+    const c = normalizada.charCodeAt(i + 2);
+    const d = normalizada.charCodeAt(i + 3);
+    if ((b === a + 1 && c === b + 1 && d === c + 1) ||
+        (b === a - 1 && c === b - 1 && d === c - 1)) {
+      return 'No uses secuencias consecutivas como abcd o 1234.';
+    }
+  }
+  return '';
+};
+
 function App() {
 
   /* ==================================================
@@ -513,16 +547,48 @@ const cargarReportes = async (opciones = {}) => {
     setModalProveedorAbierto(true);
   };
 
+  const validarNombreProveedor = (valor) => {
+    const nombre = String(valor || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    const letras = (nombre.match(/\p{L}/gu) || []).length;
+    const tieneCaracteresInvalidos = /[\p{C}<>={}\[\]\\]/u.test(nombre);
+    const puntuacionRepetida = /[^\p{L}\p{N}\s]{3,}/u.test(nombre);
+    if (!nombre) return 'El nombre del proveedor es obligatorio.';
+    if (letras < 4) return 'El nombre debe contener al menos 4 letras, sin contar espacios.';
+    if (tieneCaracteresInvalidos || puntuacionRepetida) return 'El nombre contiene caracteres o secuencias no permitidas. Evita usar símbolos repetidos como "...".';
+    if (!/\p{L}/u.test(nombre)) return 'El nombre debe incluir letras.';
+    return '';
+  };
+
+  const validarCorreoProveedor = (valor) => {
+    const correo = String(valor || '');
+    if (!correo) return 'El correo electrónico es obligatorio.';
+    if (correo.length > 254 || /\s/.test(correo)) return 'El correo no debe contener espacios y no puede superar 254 caracteres.';
+    const formato = /^[A-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)*\.[A-Z]{2,63}$/i;
+    const [local] = correo.split('@');
+    if (!formato.test(correo) || !local || local.startsWith('.') || local.endsWith('.') || local.includes('..')) {
+      return 'Escribe un correo válido, por ejemplo: contacto@empresa.com.';
+    }
+    return '';
+  };
+
   const guardarProveedor = async (e) => {
     e.preventDefault();
-    if (!formProveedor.nombre.trim()) {
-      mostrarMensajeProveedor('error', 'Falta el nombre', 'Escribe el nombre del proveedor.');
+    const nombre = String(formProveedor.nombre || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    const correo = String(formProveedor.contacto || '');
+    const errorNombre = validarNombreProveedor(nombre);
+    if (errorNombre) {
+      mostrarMensajeProveedor('error', 'Nombre no válido', errorNombre);
+      return;
+    }
+    const errorCorreo = validarCorreoProveedor(correo);
+    if (errorCorreo) {
+      mostrarMensajeProveedor('error', 'Correo no válido', errorCorreo);
       return;
     }
     const lada = String(formProveedor.lada || '').replace(/\D/g, '');
     const numero = String(formProveedor.telefono || '').replace(/\D/g, '');
-    if (numero && (!/^\d{1,4}$/.test(lada) || !/^\d{10}$/.test(numero))) {
-      mostrarMensajeProveedor('error', 'Teléfono no válido', 'Escribe una lada de 1 a 4 dígitos y un número telefónico de exactamente 10 dígitos.');
+    if (!/^\d{1,4}$/.test(lada) || !/^\d{10}$/.test(numero)) {
+      mostrarMensajeProveedor('error', 'Teléfono no válido', 'La lada internacional debe tener de 1 a 4 dígitos y el número nacional debe contener exactamente 10 dígitos.');
       return;
     }
     setGuardandoProveedor(true);
@@ -531,9 +597,9 @@ const cargarReportes = async (opciones = {}) => {
         method: proveedorEditando ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nombre: formProveedor.nombre.trim(),
-          contacto: formProveedor.contacto,
-          telefono: numero ? `+${lada}${numero}` : '',
+          nombre,
+          contacto: correo,
+          telefono: `+${lada}${numero}`,
           estado: formProveedor.estado
         })
       });
@@ -847,14 +913,17 @@ const guardarEmpleado = async (e) => {
     }
     const ladaLimpia = String(formEmpleado.lada || '').replace(/\D/g, '');
     const telefonoLimpio = String(formEmpleado.telefono || '').replace(/\D/g, '');
-    if (telefonoLimpio && (!/^\d{2,3}$/.test(ladaLimpia) || !/^\d{4,14}$/.test(telefonoLimpio))) {
-        mostrarAvisoEmpleado('error', 'Teléfono no válido', 'La lada debe tener 2 o 3 dígitos y el número telefónico de 4 a 14 dígitos.');
+    if (telefonoLimpio && (!/^\d{1,4}$/.test(ladaLimpia) || !/^\d{10}$/.test(telefonoLimpio))) {
+        mostrarAvisoEmpleado('error', 'Teléfono no válido', 'Si registras un teléfono, la lada debe tener de 1 a 4 dígitos y el número nacional exactamente 10 dígitos.');
         return;
     }
     const telefonoCompleto = telefonoLimpio ? `+${ladaLimpia} ${telefonoLimpio}` : '';
-    if (empleadoEditando && passwordEmpleadoEdicion && passwordEmpleadoEdicion.length < 6) {
-        mostrarAvisoEmpleado('error', 'Contraseña demasiado corta', 'La nueva contraseña debe tener al menos 6 caracteres.');
-        return;
+    if (empleadoEditando && passwordEmpleadoEdicion) {
+        const errorPasswordEdicion = validarPasswordEmpleado(passwordEmpleadoEdicion);
+        if (errorPasswordEdicion) {
+            mostrarAvisoEmpleado('error', 'Contraseña no válida', errorPasswordEdicion);
+            return;
+        }
     }
     setGuardandoEmpleado(true);
     try {
@@ -891,6 +960,12 @@ const guardarEmpleado = async (e) => {
 const guardarUsuarioEmpleado = async (e) => {
     e.preventDefault();
     if (!empleadoSeleccionado) return;
+    const errorUsername = validarUsernameEmpleado(formUsuario.username);
+    const errorPassword = validarPasswordEmpleado(formUsuario.password);
+    if (errorUsername || errorPassword) {
+        mostrarAvisoEmpleado('error', 'Revisa los datos de acceso', errorUsername || errorPassword);
+        return;
+    }
     setGuardandoEmpleado(true);
     try {
         const response = await fetch(`/api/empleados/${empleadoSeleccionado.id_empleado}/usuario`, {
@@ -2135,16 +2210,16 @@ const confirmarCambioEstadoEmpleado = async () => {
                   <button type="button" className="modal-close" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>×</button>
                 </div>
                 <form onSubmit={guardarProveedor}>
-                  <div className="cash-field"><label>Nombre *</label><input required maxLength="150" value={formProveedor.nombre} onChange={e => setFormProveedor(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del proveedor" /></div>
-                  <div className="cash-field"><label>Contacto</label><input maxLength="150" value={formProveedor.contacto} onChange={e => setFormProveedor(f => ({ ...f, contacto: e.target.value }))} placeholder="Correo o persona de contacto" /></div>
+                  <div className="cash-field"><label htmlFor="proveedor-nombre">Nombre *</label><input id="proveedor-nombre" required maxLength="150" minLength="4" autoComplete="organization" value={formProveedor.nombre} onChange={e => setFormProveedor(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del proveedor" /></div>
+                  <div className="cash-field"><label htmlFor="proveedor-correo">Correo electrónico *</label><input id="proveedor-correo" type="email" required maxLength="254" autoComplete="email" spellCheck="false" value={formProveedor.contacto} onChange={e => setFormProveedor(f => ({ ...f, contacto: e.target.value }))} placeholder="contacto@empresa.com" /></div>
                   <div className="cash-field">
-                    <label>Teléfono</label>
+                    <label htmlFor="proveedor-telefono">Teléfono *</label>
                     <div className="phone-input-wrap supplier-phone-wrap">
                       <span className="supplier-lada-prefix">+</span>
-                      <input className="supplier-lada-input" aria-label="Lada internacional" inputMode="numeric" maxLength="4" placeholder="52" value={formProveedor.lada} onChange={e => setFormProveedor(f => ({ ...f, lada: e.target.value.replace(/\D/g, '').slice(0,4) }))} />
-                      <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="10" placeholder="10 dígitos" value={formProveedor.telefono} onChange={e => setFormProveedor(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0,10) }))} />
+                      <input className="supplier-lada-input" aria-label="Lada internacional" inputMode="numeric" autoComplete="tel-country-code" maxLength="4" placeholder="52" required value={formProveedor.lada} onChange={e => setFormProveedor(f => ({ ...f, lada: e.target.value.replace(/\D/g, '').slice(0,4) }))} />
+                      <input id="proveedor-telefono" type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="10" minLength="10" pattern="[0-9]{10}" required placeholder="10 dígitos" value={formProveedor.telefono} onChange={e => setFormProveedor(f => ({ ...f, telefono: e.target.value.replace(/\D/g, '').slice(0,10) }))} />
                     </div>
-                    <small>Lada internacional editable y número nacional de 10 dígitos.</small>
+                    <small>Ingresa una lada internacional de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.</small>
                   </div>
                   <div className="modal-actions">
                     <button type="button" className="modal-secondary" onClick={() => setModalProveedorAbierto(false)} disabled={guardandoProveedor}>Cancelar</button>
@@ -2257,7 +2332,9 @@ const confirmarCambioEstadoEmpleado = async () => {
                       ) : (() => {
                         const totalPaginas = Math.max(1, Math.ceil(empleadosFiltrados.length / EMPLEADOS_POR_PAGINA));
                         const paginaActual = Math.min(paginaEmpleados, totalPaginas);
-                        const empleadosPagina = vistaImpresionEmpleados ? empleadosFiltrados : empleadosFiltrados.slice((paginaActual - 1) * EMPLEADOS_POR_PAGINA, paginaActual * EMPLEADOS_POR_PAGINA);
+                        const empleadosPagina = (vistaImpresionEmpleados && document.body.classList.contains('printing-empleados'))
+                          ? empleadosFiltrados
+                          : empleadosFiltrados.slice((paginaActual - 1) * EMPLEADOS_POR_PAGINA, paginaActual * EMPLEADOS_POR_PAGINA);
 
                         if (empleadosFiltrados.length === 0) {
                           return <tr><td colSpan="8" className="table-empty">No se encontraron empleados.</td></tr>;
@@ -2384,29 +2461,41 @@ const confirmarCambioEstadoEmpleado = async () => {
                       </div>
                       <button type="button" className="modal-close" onClick={() => { setModalEmpleadoAbierto(false); setEmpleadoEditando(null); setPasswordEmpleadoEdicion(''); }}>×</button>
                     </div>
-                    <form onSubmit={guardarEmpleado}>
+                    <form noValidate onSubmit={guardarEmpleado}>
                       <div className="cash-field">
                         <label>Nombre completo *</label>
                         <input
                           type="text"
-                          required
                           maxLength="150"
                           value={formEmpleado.nombre}
                           onChange={e => setFormEmpleado({ ...formEmpleado, nombre: e.target.value })}
                         />
+                        {!formEmpleado.nombre.trim() && (
+                          <small className="field-hint field-hint-error">El nombre es obligatorio. Se permite incluso un solo carácter.</small>
+                        )}
                       </div>
                       <div className="cash-field">
                         <label>Teléfono</label>
                         <div className="phone-input-wrap employee-phone-input">
                           <div className="employee-country-code">
                             <span>+</span>
-                            <input type="tel" inputMode="numeric" aria-label="Lada o código de país" maxLength="3" minLength="2" placeholder="52" value={formEmpleado.lada} onChange={e => setFormEmpleado({ ...formEmpleado, lada: e.target.value.replace(/\D/g, '').slice(0, 3) })} />
+                            <input type="tel" inputMode="numeric" aria-label="Lada o código de país" maxLength="4" placeholder="52" value={formEmpleado.lada} onChange={e => setFormEmpleado({ ...formEmpleado, lada: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
                           </div>
-                          <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="14" placeholder="Número telefónico"
+                          <input type="tel" inputMode="numeric" autoComplete="tel-national" maxLength="10" placeholder="10 dígitos"
                             value={formEmpleado.telefono}
-                            onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value.replace(/\D/g, '').slice(0, 14) })} />
+                            onChange={e => setFormEmpleado({ ...formEmpleado, telefono: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
                         </div>
-                        <small>La lada debe tener 2 o 3 dígitos. Escribe el número telefónico por separado. Ejemplo: +52 y 6623259338.</small>
+                        <small className={
+                          (formEmpleado.telefono && (!/^\d{1,4}$/.test(String(formEmpleado.lada || '')) || !/^\d{10}$/.test(String(formEmpleado.telefono || '')))) ||
+                          (!formEmpleado.telefono && formEmpleado.lada && !/^\d{1,4}$/.test(String(formEmpleado.lada)))
+                            ? "field-hint field-hint-error" : "field-hint"
+                        }>
+                          {formEmpleado.telefono
+                            ? ((!/^\d{1,4}$/.test(String(formEmpleado.lada || '')) || !/^\d{10}$/.test(String(formEmpleado.telefono || '')))
+                              ? 'Completa una lada de 1 a 4 dígitos y un número nacional de exactamente 10 dígitos.'
+                              : 'Teléfono válido.')
+                            : 'Opcional. Si lo agregas, usa una lada de 1 a 4 dígitos y 10 dígitos nacionales.'}
+                        </small>
                       </div>
                       <div className="modal-section">
                         <label className="modal-label">Rol del sistema</label>
@@ -2422,8 +2511,23 @@ const confirmarCambioEstadoEmpleado = async () => {
                       {empleadoEditando?.username && (
                         <div className="cash-field">
                           <label>Nueva contraseña de acceso (opcional)</label>
-                          <input type="password" autoComplete="new-password" minLength="6" value={passwordEmpleadoEdicion} onChange={e=>setPasswordEmpleadoEdicion(e.target.value)} placeholder="Dejar vacío para conservar la actual" />
-                          <small>Por seguridad, la contraseña actual nunca se muestra. Solo se cambia si escribes una nueva.</small>
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            maxLength="8"
+                            value={passwordEmpleadoEdicion}
+                            onChange={e=>setPasswordEmpleadoEdicion(e.target.value)}
+                            placeholder="Dejar vacío para conservar la actual"
+                            aria-describedby="password-edicion-reglas"
+                          />
+                          <small
+                            id="password-edicion-reglas"
+                            className={passwordEmpleadoEdicion && validarPasswordEmpleado(passwordEmpleadoEdicion) ? "field-hint field-hint-error" : "field-hint"}
+                          >
+                            {passwordEmpleadoEdicion
+                              ? (validarPasswordEmpleado(passwordEmpleadoEdicion) || 'Contraseña válida.')
+                              : 'Por seguridad, la contraseña actual nunca se muestra. Déjala vacía para conservarla. Si la cambias, debe cumplir las mismas reglas de creación: 4 a 8 caracteres, mínimo 4 letras, sin espacios ni secuencias.'}
+                          </small>
                         </div>
                       )}
                       <div className="modal-actions">
@@ -2446,29 +2550,37 @@ const confirmarCambioEstadoEmpleado = async () => {
                     </div>
                     <button type="button" className="modal-close" onClick={() => setModalCrearUsuarioAbierto(false)}>×</button>
                   </div>
-                  <form onSubmit={guardarUsuarioEmpleado}>
+                  <form noValidate onSubmit={guardarUsuarioEmpleado}>
                     <div className="cash-field">
                       <label>Usuario (Username) *</label>
                       <input
                         type="text"
-                        required
                         maxLength="50"
                         value={formUsuario.username}
                         onChange={e => setFormUsuario({ ...formUsuario, username: e.target.value })}
+                        aria-describedby="username-reglas"
                       />
+                      <small id="username-reglas" className={formUsuario.username && validarUsernameEmpleado(formUsuario.username) ? "field-hint field-hint-error" : "field-hint"}>
+                        {formUsuario.username ? (validarUsernameEmpleado(formUsuario.username) || 'Usuario válido.') : 'Mínimo 6 letras. Sin espacios; se permiten números, punto, guion y guion bajo.'}
+                      </small>
                     </div>
                     <div className="cash-field">
                       <label>Contraseña *</label>
                       <input
                         type="password"
-                        required
                         value={formUsuario.password}
+                        maxLength="8"
+                        autoComplete="new-password"
                         onChange={e => setFormUsuario({ ...formUsuario, password: e.target.value })}
+                        aria-describedby="password-reglas"
                       />
+                      <small id="password-reglas" className={formUsuario.password && validarPasswordEmpleado(formUsuario.password) ? "field-hint field-hint-error" : "field-hint"}>
+                        {formUsuario.password ? (validarPasswordEmpleado(formUsuario.password) || 'Contraseña válida.') : 'De 4 a 8 caracteres, sin espacios. Evita secuencias como abcd o 1234 y caracteres repetidos.'}
+                      </small>
                     </div>
                     <div className="modal-actions">
                       <button type="button" className="modal-secondary" onClick={() => setModalCrearUsuarioAbierto(false)}>Cancelar</button>
-                      <button type="submit" className="modal-primary">Crear usuario</button>
+                      <button type="submit" className="modal-primary" disabled={guardandoEmpleado}>{guardandoEmpleado ? "Creando..." : "Crear usuario"}</button>
                     </div>
                   </form>
                 </div>
