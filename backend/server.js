@@ -242,39 +242,55 @@ app.put('/api/inventario/:id', async (req, res) => {
 
 app.get('/api/ventas', async (req, res) => {
     try {
+        // Recupera el historial y agrupa todos los detalles en una sola consulta.
+        // Evita ejecutar una consulta adicional por cada venta (problema N+1).
         const queryVentas = `
-            SELECT v.id_venta, v.total, v.metodo_pago, v.efectivo_recibido,
-                   v.cambio_entregado, v.fecha_hora,
-                   e.nombre AS nombre_usuario, u.username
+            WITH detalles_agrupados AS (
+                SELECT
+                    dv.id_venta,
+                    json_agg(
+                        json_build_object(
+                            'cantidad', dv.cantidad,
+                            'nombre', p.nombre,
+                            'precio', dv.precio_unitario,
+                            'subtotal', dv.subtotal,
+                            'personalizacion', dv.personalizacion,
+                            'id_producto_padre', dv.id_producto_padre
+                        ) ORDER BY p.nombre
+                    ) AS detalles
+                FROM public.detalle_ventas dv
+                INNER JOIN public.productos p ON p.id_producto = dv.id_producto
+                GROUP BY dv.id_venta
+            )
+            SELECT
+                v.id_venta AS folio,
+                v.total,
+                v.metodo_pago,
+                v.efectivo_recibido,
+                v.cambio_entregado,
+                v.fecha_hora,
+                e.nombre AS nombre_usuario,
+                u.username,
+                COALESCE(d.detalles, '[]'::json) AS detalles
             FROM public.ventas v
             LEFT JOIN public.usuarios u ON u.id_usuario = v.id_usuario
             LEFT JOIN public.empleado e ON e.id_empleado = u.id_empleado
-            ORDER BY v.fecha_hora DESC;
+            LEFT JOIN detalles_agrupados d ON d.id_venta = v.id_venta
+            ORDER BY v.fecha_hora DESC, v.id_venta DESC;
         `;
-        const ventasRes = await pool.query(queryVentas);
-        const ventas = [];
 
-        for (let v of ventasRes.rows) {
-            const detalleRes = await pool.query(`
-                SELECT dv.cantidad, p.nombre, dv.precio_unitario AS precio, dv.subtotal,
-                       dv.personalizacion, dv.id_producto_padre
-                FROM public.detalle_ventas dv
-                JOIN public.productos p ON dv.id_producto = p.id_producto
-                WHERE dv.id_venta = $1
-            `, [v.id_venta]);
-
-            ventas.push({
-                folio: v.id_venta,
-                total: parseFloat(v.total),
-                metodo_pago: v.metodo_pago,
-                efectivo_recibido: parseFloat(v.efectivo_recibido || 0),
-                cambio_entregado: parseFloat(v.cambio_entregado || 0),
-                fecha_hora: v.fecha_hora,
-                nombre_usuario: v.nombre_usuario || null,
-                username: v.username || null,
-                detalles: detalleRes.rows
-            });
-        }
+        const { rows } = await pool.query(queryVentas);
+        const ventas = rows.map(v => ({
+            folio: v.folio,
+            total: Number(v.total || 0),
+            metodo_pago: v.metodo_pago,
+            efectivo_recibido: Number(v.efectivo_recibido || 0),
+            cambio_entregado: Number(v.cambio_entregado || 0),
+            fecha_hora: v.fecha_hora,
+            nombre_usuario: v.nombre_usuario || null,
+            username: v.username || null,
+            detalles: Array.isArray(v.detalles) ? v.detalles : []
+        }));
 
         res.json(ventas);
     } catch (err) {
@@ -312,6 +328,8 @@ app.post('/api/ventas', async (req, res) => {
         // también cuando varios productos necesitan el mismo insumo.
         const consumoPorInsumo = new Map();
         const consumoPorProducto = new Map();
+        // Reutiliza en la fase de descuento la configuración consultada al validar.
+        const configuracionPorItem = new Map();
         const agregarConsumo = (idInsumo, cantidad) => {
             if (!idInsumo || !Number.isFinite(Number(cantidad)) || Number(cantidad) <= 0) return;
             const id = Number(idInsumo);
@@ -334,7 +352,14 @@ app.post('/api/ventas', async (req, res) => {
                 const error = new Error(`No se encontró el producto con ID ${item.id_producto}.`);
                 error.statusCode = 400; throw error;
             }
-            if (productoTipoRes.rows[0].control_stock === 'directo') {
+            const configuracionItem = {
+                control_stock: productoTipoRes.rows[0].control_stock,
+                factor_ingredientes: 1.0,
+                id_insumo_vaso: null
+            };
+            configuracionPorItem.set(item, configuracionItem);
+
+            if (configuracionItem.control_stock === 'directo') {
                 const idProducto = Number(item.id_producto);
                 consumoPorProducto.set(idProducto, (consumoPorProducto.get(idProducto) || 0) + cantidad);
                 continue;
@@ -356,11 +381,15 @@ app.post('/api/ventas', async (req, res) => {
                 }
                 factorIngredientes = Number(tamanoRes.rows[0].factor_ingredientes || 1);
                 idInsumoEmpaque = tamanoRes.rows[0].id_insumo_vaso == null ? null : Number(tamanoRes.rows[0].id_insumo_vaso);
+                configuracionItem.factor_ingredientes = factorIngredientes;
+                configuracionItem.id_insumo_vaso = idInsumoEmpaque;
             } else if (item.customization) {
                 // Compatibilidad temporal con el frontend anterior.
                 if (item.customization.includes('Chico')) { factorIngredientes = 1.0; idInsumoEmpaque = 5; }
                 else if (item.customization.includes('Mediano')) { factorIngredientes = 1.35; idInsumoEmpaque = 6; }
                 else if (item.customization.includes('Grande')) { factorIngredientes = 1.7; idInsumoEmpaque = 7; }
+                configuracionItem.factor_ingredientes = factorIngredientes;
+                configuracionItem.id_insumo_vaso = idInsumoEmpaque;
             }
 
             const nombreItemLower = (item.nombre || '').toLowerCase();
@@ -448,11 +477,8 @@ app.post('/api/ventas', async (req, res) => {
 
             // El tipo de inventario se determina por la configuración del producto,
             // no por rangos o valores específicos de id_producto.
-            const tipoProductoRes = await client.query(
-                `SELECT control_stock FROM public.productos WHERE id_producto = $1`,
-                [Number(item.id_producto)]
-            );
-            const esProductoDirecto = tipoProductoRes.rows[0]?.control_stock === 'directo';
+            const configuracionItem = configuracionPorItem.get(item);
+            const esProductoDirecto = configuracionItem?.control_stock === 'directo';
 
             if (esProductoDirecto) {
                 await client.query(
@@ -479,23 +505,9 @@ app.post('/api/ventas', async (req, res) => {
                 // ID 8: Tapa Caliente | ID 9: Tapa Fría
                 const idInsumoTapa = esBebidaFria ? 9 : 8;
 
-                if (item.id_tamano != null && item.id_tamano !== '') {
-                    const tamanoRes = await client.query(
-                        `SELECT pt.factor_ingredientes, t.id_insumo_vaso
-                         FROM public.producto_tamano pt
-                         JOIN public.tamano t ON t.id_tamano = pt.id_tamano
-                         WHERE pt.id_producto = $1 AND pt.id_tamano = $2`,
-                        [Number(item.id_producto), Number(item.id_tamano)]
-                    );
-                    if (!tamanoRes.rowCount) throw new Error(`El tamaño seleccionado no está permitido para el producto ${item.nombre || item.id_producto}.`);
-                    factorIngredientes = Number(tamanoRes.rows[0].factor_ingredientes || 1);
-                    idInsumoEmpaque = tamanoRes.rows[0].id_insumo_vaso == null ? null : Number(tamanoRes.rows[0].id_insumo_vaso);
-                } else if (item.customization) {
-                    // Compatibilidad temporal con el frontend anterior.
-                    if (item.customization.includes('Chico')) { factorIngredientes = 1.0; idInsumoEmpaque = 5; }
-                    else if (item.customization.includes('Mediano')) { factorIngredientes = 1.35; idInsumoEmpaque = 6; }
-                    else if (item.customization.includes('Grande')) { factorIngredientes = 1.7; idInsumoEmpaque = 7; }
-                }
+                // Los tamaños y factores ya fueron validados en la primera fase.
+                factorIngredientes = Number(configuracionItem?.factor_ingredientes || 1);
+                idInsumoEmpaque = configuracionItem?.id_insumo_vaso ?? null;
 
                 const consumoTotalReceta = item.cantidad * factorIngredientes;
 
@@ -548,14 +560,23 @@ app.post('/api/ventas', async (req, res) => {
 app.get('/api/catalogo-compras', async (req, res) => {
     try {
         const result = await pool.query(`
+            WITH precios_insumo AS (
+                SELECT id_insumo, MIN(precio_compra) AS precio_sugerido
+                FROM public.proveedor_insumo
+                GROUP BY id_insumo
+            )
             SELECT 'insumo'::text AS tipo, i.id_insumo AS id_articulo,
                    i.nombre, i.unidad, COALESCE(ci.nombre, 'General') AS categoria,
-                   COALESCE((SELECT MIN(pi.precio_compra) FROM public.proveedor_insumo pi WHERE pi.id_insumo = i.id_insumo), 0)::numeric AS precio_sugerido
+                   COALESCE(pi.precio_sugerido, 0)::numeric AS precio_sugerido
             FROM public.insumo i
             LEFT JOIN public.categoria_insumo ci ON i.id_cat_insumo = ci.id_cat_insumo
+            LEFT JOIN precios_insumo pi ON pi.id_insumo = i.id_insumo
+
             UNION ALL
+
             SELECT 'producto'::text AS tipo, p.id_producto AS id_articulo,
-                   p.nombre, 'piezas'::text AS unidad, COALESCE(c.nombre, 'General') AS categoria, 0::numeric AS precio_sugerido
+                   p.nombre, 'piezas'::text AS unidad, COALESCE(c.nombre, 'General') AS categoria,
+                   0::numeric AS precio_sugerido
             FROM public.productos p
             LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
             WHERE LOWER(COALESCE(p.control_stock, '')) = 'directo'
@@ -1745,10 +1766,12 @@ app.get('/api/reportes', async (req, res) => {
                 COALESCE(SUM(CASE WHEN lower(metodo_pago) = 'efectivo' THEN total ELSE 0 END), 0) AS ingresos_efectivo,
                 COALESCE(SUM(CASE WHEN lower(metodo_pago) = 'tarjeta' THEN total ELSE 0 END), 0) AS ingresos_tarjeta
             FROM public.ventas
-            WHERE ($1::date IS NULL OR fecha_hora::date >= $1::date)
-              AND ($2::date IS NULL OR fecha_hora::date <= $2::date);
+            WHERE ($1::date IS NULL OR fecha_hora >= $1::date)
+              AND ($2::date IS NULL OR fecha_hora < ($2::date + INTERVAL '1 day'));
         `;
-        const resumenRes = await pool.query(resumenQuery, parametros);
+        // Ejecutar los tres bloques de análisis en paralelo para reducir el tiempo
+        // total de espera de la pantalla de reportes.
+        const resumenPromise = pool.query(resumenQuery, parametros);
 
         // 2. Top 5 productos vendidos dentro del mismo periodo.
         const topProductosQuery = `
@@ -1761,13 +1784,13 @@ app.get('/api/reportes', async (req, res) => {
             JOIN public.ventas v ON v.id_venta = dv.id_venta
             JOIN public.productos p ON dv.id_producto = p.id_producto
             LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
-            WHERE ($1::date IS NULL OR v.fecha_hora::date >= $1::date)
-              AND ($2::date IS NULL OR v.fecha_hora::date <= $2::date)
+            WHERE ($1::date IS NULL OR v.fecha_hora >= $1::date)
+              AND ($2::date IS NULL OR v.fecha_hora < ($2::date + INTERVAL '1 day'))
             GROUP BY p.id_producto, p.nombre, c.nombre
             ORDER BY total_unidades DESC
             LIMIT 5;
         `;
-        const topProductosRes = await pool.query(topProductosQuery, parametros);
+        const topProductosPromise = pool.query(topProductosQuery, parametros);
 
         // 3. Ventas por categoría dentro del mismo periodo.
         const porCategoriaQuery = `
@@ -1779,12 +1802,17 @@ app.get('/api/reportes', async (req, res) => {
             JOIN public.ventas v ON v.id_venta = dv.id_venta
             JOIN public.productos p ON dv.id_producto = p.id_producto
             LEFT JOIN public.categorias c ON p.id_categoria = c.id_categoria
-            WHERE ($1::date IS NULL OR v.fecha_hora::date >= $1::date)
-              AND ($2::date IS NULL OR v.fecha_hora::date <= $2::date)
+            WHERE ($1::date IS NULL OR v.fecha_hora >= $1::date)
+              AND ($2::date IS NULL OR v.fecha_hora < ($2::date + INTERVAL '1 day'))
             GROUP BY c.id_categoria, c.nombre
             ORDER BY total DESC;
         `;
-        const porCategoriaRes = await pool.query(porCategoriaQuery, parametros);
+        const porCategoriaPromise = pool.query(porCategoriaQuery, parametros);
+        const [resumenRes, topProductosRes, porCategoriaRes] = await Promise.all([
+            resumenPromise,
+            topProductosPromise,
+            porCategoriaPromise
+        ]);
 
         const resumen = resumenRes.rows[0];
         res.json({

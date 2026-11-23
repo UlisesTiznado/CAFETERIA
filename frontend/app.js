@@ -1,4 +1,4 @@
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 
 /* ==================================================
@@ -104,6 +104,12 @@ function App() {
   const [notificacionStock, setNotificacionStock] = useState(null);
   const [ultimaVenta, setUltimaVenta] = useState(null);
   const [ventasGerencia, setVentasGerencia] = useState([]);
+  const [cargandoVentas, setCargandoVentas] = useState(false);
+  const ventasEnCargaRef = useRef(false);
+  const reportesEnCargaRef = useRef(false);
+  const contabilidadEnCargaRef = useRef(false);
+  const nominasEnCargaRef = useRef(false);
+  const empleadosEnCargaRef = useRef(false);
   const [paginaVentas, setPaginaVentas] = useState(1);
   const [busquedaVentas, setBusquedaVentas] = useState('');
   const [filtroMetodoVentas, setFiltroMetodoVentas] = useState('todos');
@@ -116,6 +122,7 @@ function App() {
   // Administración de proveedores
   const [proveedores, setProveedores] = useState([]);
   const [cargandoProveedores, setCargandoProveedores] = useState(false);
+  const [proveedoresCargados, setProveedoresCargados] = useState(false);
   const [busquedaProveedor, setBusquedaProveedor] = useState('');
   const [filtroEstadoProveedor, setFiltroEstadoProveedor] = useState('todos');
   const [paginaProveedores, setPaginaProveedores] = useState(1);
@@ -132,6 +139,9 @@ function App() {
   const [catalogoCompras, setCatalogoCompras] = useState([]);
   const [categoriaCompraSeleccionada, setCategoriaCompraSeleccionada] = useState('');
   const [cargandoCatalogoCompras, setCargandoCatalogoCompras] = useState(false);
+  const catalogoComprasEnCargaRef = useRef(false);
+  const compraEnProcesoRef = useRef(false);
+  const [catalogoComprasCargado, setCatalogoComprasCargado] = useState(false);
   const [guardandoCompra, setGuardandoCompra] = useState(false);
   const [confirmacionCompraAbierta, setConfirmacionCompraAbierta] = useState(false);
   const [mensajeCompra, setMensajeCompra] = useState({ visible: false, tipo: 'info', titulo: '', texto: '' });
@@ -157,6 +167,7 @@ function App() {
   // Estados para el módulo de Empleados
   const [empleados, setEmpleados] = useState([]);
   const [cargandoEmpleados, setCargandoEmpleados] = useState(false);
+  const [empleadosCargados, setEmpleadosCargados] = useState(false);
   const [busquedaEmpleado, setBusquedaEmpleado] = useState('');
   const [filtroEstadoEmpleado, setFiltroEstadoEmpleado] = useState('todos');
   const [fechaInicioEmpleados, setFechaInicioEmpleados] = useState('');
@@ -182,6 +193,9 @@ function App() {
   visible: false,
   mensaje: ''
 });
+  const [guardandoVenta, setGuardandoVenta] = useState(false);
+  // Bloqueo síncrono: evita que dos clics rápidos envíen dos ventas antes del siguiente render.
+  const ventaEnProcesoRef = useRef(false);
 const [reportesData, setReportesData] = useState(null);
   const fechaHoyReportes = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
   const [fechaInicioReportes, setFechaInicioReportes] = useState('');
@@ -286,16 +300,26 @@ const [reportesData, setReportesData] = useState(null);
   };
 
   const cargarVentasGerencia = async () => {
+    // Evita solicitudes duplicadas si se pulsa varias veces o se abre la sección repetidamente.
+    if (ventasEnCargaRef.current) return;
+    ventasEnCargaRef.current = true;
+    setCargandoVentas(true);
     try {
       const response = await fetch('/api/ventas', { cache: 'no-store' });
       const data = await response.json();
-      setVentasGerencia(data);
+      if (!response.ok) throw new Error(data.error || 'No se pudo cargar el historial de ventas');
+      setVentasGerencia(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error al cargar ventas:', error);
+      alert(error.message || 'No se pudo cargar el historial de ventas.');
+    } finally {
+      ventasEnCargaRef.current = false;
+      setCargandoVentas(false);
     }
   };
 
 const cargarReportes = async (opciones = {}) => {
+  if (reportesEnCargaRef.current) return;
   const inicio = opciones.todo ? '' : (opciones.fechaInicio ?? fechaInicioReportes);
   const fin = opciones.todo ? '' : (opciones.fechaFin ?? fechaFinReportes);
 
@@ -308,6 +332,7 @@ const cargarReportes = async (opciones = {}) => {
     return;
   }
 
+  reportesEnCargaRef.current = true;
   setCargandoReportes(true);
   setErrorReportes('');
   setReportesData(null); // Evita dejar visibles resultados del periodo anterior mientras se aplica el nuevo filtro.
@@ -334,6 +359,7 @@ const cargarReportes = async (opciones = {}) => {
     console.error('Error al cargar reportes:', error);
     setErrorReportes(error.message || 'No fue posible cargar los reportes.');
   } finally {
+    reportesEnCargaRef.current = false;
     setCargandoReportes(false);
   }
 };
@@ -356,6 +382,8 @@ const cargarReportes = async (opciones = {}) => {
   const mostrarAvisoContable = (tipo, titulo, texto) => setAvisoContable({ tipo, titulo, texto });
 
   const cargarContabilidad = async () => {
+    if (contabilidadEnCargaRef.current) return;
+    contabilidadEnCargaRef.current = true;
     setCargandoContabilidad(true);
     try {
       const response = await fetch('/api/contabilidad', { cache: 'no-store' });
@@ -365,10 +393,15 @@ const cargarReportes = async (opciones = {}) => {
     } catch (err) {
       console.error('Error al cargar contabilidad:', err);
       mostrarAvisoContable('error', 'No se pudo cargar', err.message || 'Error al cargar Contabilidad');
-    } finally { setCargandoContabilidad(false); }
+    } finally {
+      contabilidadEnCargaRef.current = false;
+      setCargandoContabilidad(false);
+    }
   };
 
   const cargarNominas = async () => {
+    if (nominasEnCargaRef.current) return;
+    nominasEnCargaRef.current = true;
     try {
       const response = await fetch('/api/nominas', { cache: 'no-store' });
       const data = await response.json();
@@ -376,6 +409,7 @@ const cargarReportes = async (opciones = {}) => {
       setNominas(data.nominas || []);
       setPagosNomina(data.pagos || []);
     } catch (err) { mostrarAvisoContable('error', 'No se pudieron cargar las nóminas', err.message); }
+    finally { nominasEnCargaRef.current = false; }
   };
 
   const guardarGastoExtra = async (e) => {
@@ -510,13 +544,15 @@ const cargarReportes = async (opciones = {}) => {
   const mostrarMensajeProveedor = (tipo, titulo, texto) =>
     setMensajeProveedor({ visible: true, tipo, titulo, texto });
 
-  const cargarProveedores = async () => {
+  const cargarProveedores = async (forzar = false) => {
+    if (proveedoresCargados && !forzar) return;
     setCargandoProveedores(true);
     try {
       const response = await fetch('/api/proveedores', { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudieron cargar los proveedores');
       setProveedores(Array.isArray(data) ? data : []);
+      setProveedoresCargados(true);
     } catch (err) {
       console.error('Error al cargar proveedores:', err);
       mostrarMensajeProveedor('error', 'No se pudieron cargar los proveedores', err.message || 'Error de conexión.');
@@ -606,7 +642,7 @@ const cargarReportes = async (opciones = {}) => {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo guardar el proveedor');
       setModalProveedorAbierto(false);
-      await cargarProveedores();
+      await cargarProveedores(true);
       mostrarMensajeProveedor('success', proveedorEditando ? 'Proveedor actualizado' : 'Proveedor registrado',
         proveedorEditando ? 'Los datos se actualizaron correctamente.' : 'El proveedor se registró correctamente.');
     } catch (err) {
@@ -619,23 +655,38 @@ const cargarReportes = async (opciones = {}) => {
 
   const abrirNuevaCompra = async () => {
     setCategoriaCompraSeleccionada('');
-    setFormCompra({ id_proveedor: '', fecha_compra: (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(), metodo_pago: 'Efectivo', observaciones: '', items: [] });
+    setFormCompra({
+      id_proveedor: '',
+      fecha_compra: (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
+      metodo_pago: 'Efectivo',
+      observaciones: '',
+      items: []
+    });
     setModalCompraAbierto(true);
+
+    // Reutiliza el catálogo ya cargado y evita solicitudes simultáneas.
+    if (catalogoComprasCargado || catalogoComprasEnCargaRef.current) return;
+
+    catalogoComprasEnCargaRef.current = true;
     setCargandoCatalogoCompras(true);
     try {
-      const [catalogoRes, historialRes] = await Promise.all([
-        fetch('/api/catalogo-compras', { cache: 'no-store' }),
-        fetch('/api/compras', { cache: 'no-store' })
-      ]);
+      const catalogoRes = await fetch('/api/catalogo-compras');
       const catalogo = await catalogoRes.json();
-      const historial = await historialRes.json();
       if (!catalogoRes.ok) throw new Error(catalogo.error || 'No se pudo cargar el catálogo');
-      if (!historialRes.ok) throw new Error(historial.error || 'No se pudo cargar el historial');
       setCatalogoCompras(Array.isArray(catalogo) ? catalogo : []);
-      setComprasProveedor(Array.isArray(historial) ? historial : []);
+      setCatalogoComprasCargado(true);
     } catch (err) {
-      setMensajeCompra({ visible: true, tipo: 'error', titulo: 'No se pudo preparar la compra', texto: err.message || 'Ocurrió un error al cargar los artículos.' });
+      setMensajeCompra({
+        visible: true,
+        tipo: 'error',
+        titulo: 'No se pudo preparar la compra',
+        texto: err.message || 'Ocurrió un error al cargar los artículos.'
+      });
     } finally {
+      catalogoComprasEnCargaRef.current = false;
       setCargandoCatalogoCompras(false);
     }
   };
@@ -706,7 +757,8 @@ const cargarReportes = async (opciones = {}) => {
   };
 
   const confirmarCompraProveedor = async () => {
-    if (guardandoCompra) return;
+    if (guardandoCompra || compraEnProcesoRef.current) return;
+    compraEnProcesoRef.current = true;
     setGuardandoCompra(true);
     try {
       const response = await fetch('/api/compras', {
@@ -724,7 +776,9 @@ const cargarReportes = async (opciones = {}) => {
       if (!response.ok) throw new Error(data.error || 'No se pudo registrar la compra');
       setConfirmacionCompraAbierta(false);
       setModalCompraAbierto(false);
-      await Promise.all([cargarProveedores(), cargarInventario(), cargarMenu()]);
+      // La compra puede actualizar precios sugeridos y existencias del catálogo.
+      setCatalogoComprasCargado(false);
+      await Promise.all([cargarInventario(), cargarMenu()]);
       setMensajeCompra({ visible: true, tipo: 'success', titulo: 'Compra registrada', texto: `La compra ${data.folio} se recibió correctamente. El inventario y Contabilidad fueron actualizados.` });
       // Refresh the accounting data if the view is currently open.
       if (vistaActual === 'Contabilidad') await cargarContabilidad();
@@ -732,6 +786,7 @@ const cargarReportes = async (opciones = {}) => {
       setConfirmacionCompraAbierta(false);
       setMensajeCompra({ visible: true, tipo: 'error', titulo: 'No se pudo registrar la compra', texto: err.message || 'Ocurrió un error al registrar la compra.' });
     } finally {
+      compraEnProcesoRef.current = false;
       setGuardandoCompra(false);
     }
   };
@@ -791,7 +846,7 @@ const cargarReportes = async (opciones = {}) => {
       if (tipo === 'estado' && data && data.id_proveedor) {
         setProveedores(lista => lista.map(item => Number(item.id_proveedor) === Number(data.id_proveedor) ? { ...item, ...data } : item));
       }
-      await cargarProveedores();
+      await cargarProveedores(true);
       mostrarMensajeProveedor('success',
         estado === 'Activo' ? 'Proveedor activado' : 'Proveedor desactivado',
         data.message || 'El estado del proveedor se actualizó correctamente.');
@@ -851,19 +906,23 @@ localStorage.setItem('usuario', JSON.stringify(data.user));
   /* ==================================================
      CRUD EMPLEADOS
   ================================================== */
-const cargarEmpleados = async () => {
+const cargarEmpleados = async (forzar = false) => {
+    if (empleadosEnCargaRef.current || (empleadosCargados && !forzar)) return;
+    empleadosEnCargaRef.current = true;
     setCargandoEmpleados(true);
     try {
         const response = await fetch('/api/empleados', { cache: 'no-store' });
         const data = await response.json();
         if (response.ok) {
             setEmpleados(Array.isArray(data) ? data : []);
+            setEmpleadosCargados(true);
         } else {
             mostrarAvisoEmpleado('error', 'No se pudo cargar el personal', data.error || 'Error al obtener la lista de empleados.');
         }
     } catch (err) {
         console.error('Error al cargar empleados:', err);
     } finally {
+        empleadosEnCargaRef.current = false;
         setCargandoEmpleados(false);
     }
 };
@@ -947,7 +1006,7 @@ const guardarEmpleado = async (e) => {
         setEmpleadoEditando(null);
         setPasswordEmpleadoEdicion('');
         setFormEmpleado({ nombre: '', lada: '52', telefono: '', id_rol: 1 });
-        await cargarEmpleados();
+        await cargarEmpleados(true);
         mostrarAvisoEmpleado('success', editando ? 'Empleado actualizado' : 'Empleado registrado',
             editando ? 'Los datos del empleado se guardaron correctamente.' : 'El empleado se registró correctamente.');
     } catch (err) {
@@ -978,7 +1037,7 @@ const guardarUsuarioEmpleado = async (e) => {
 
         setModalCrearUsuarioAbierto(false);
         setFormUsuario({ username: '', password: '' });
-        await cargarEmpleados();
+        await cargarEmpleados(true);
         mostrarAvisoEmpleado('success', 'Acceso creado', `Se creó correctamente el acceso @${data.usuario.username}.`);
     } catch (err) {
         mostrarAvisoEmpleado('error', 'No se pudo crear el acceso', err.message || 'Ocurrió un error al crear el usuario.');
@@ -1030,7 +1089,7 @@ const confirmarCambioEstadoEmpleado = async () => {
         if (!response.ok) throw new Error(data.error || 'No se pudo cambiar el estado');
         setConfirmacionEstadoEmpleado(null);
         setPasswordConfirmacionEstado('');
-        await cargarEmpleados();
+        await cargarEmpleados(true);
         mostrarAvisoEmpleado('success', nuevoEstado === 'Activo' ? 'Empleado activado' : 'Empleado desactivado',
             `${emp.nombre} ahora está ${nuevoEstado.toLowerCase()}.`);
     } catch (err) {
@@ -1300,10 +1359,16 @@ const confirmarCambioEstadoEmpleado = async () => {
   ================================================== */
 
   const procesarVenta = async () => {
+    // useRef se actualiza inmediatamente, a diferencia del estado de React.
+    if (ventaEnProcesoRef.current || guardandoVenta) return false;
+
     if (carrito.length === 0) {
       alert('El carrito está vacío');
       return false;
     }
+
+    ventaEnProcesoRef.current = true;
+    setGuardandoVenta(true);
 
     const ventaData = {
       id_usuario: usuario?.id_usuario,
@@ -1363,6 +1428,9 @@ const confirmarCambioEstadoEmpleado = async () => {
       console.error(err);
       alert('Error de conexión con el servidor');
       return false;
+    } finally {
+      ventaEnProcesoRef.current = false;
+      setGuardandoVenta(false);
     }
   };
 
@@ -1680,7 +1748,6 @@ const confirmarCambioEstadoEmpleado = async () => {
                       onClick={() => {
                         setVistaActual('empleados');
                         setMenuGerenciaAbierto(false);
-                        cargarEmpleados();
                       }}
                     >
                       <span>Empleados</span>
@@ -2606,7 +2673,7 @@ const confirmarCambioEstadoEmpleado = async () => {
                 <div className="subtitle">Consulta, filtra e imprime los movimientos de caja.</div>
               </div>
               <div className="sales-header-actions">
-                <button type="button" className="btn-outline" onClick={() => { cargarVentasGerencia(); setPaginaVentas(1); }}>↻ Actualizar</button>
+                <button type="button" className="btn-outline" onClick={() => { cargarVentasGerencia(); setPaginaVentas(1); }} disabled={cargandoVentas}>{cargandoVentas ? 'Cargando…' : '↻ Actualizar'}</button>
                 <button type="button" className="management-btn" onClick={() => imprimirHistorialVentas(true)}>▤ Imprimir todo el historial</button>
                 <button type="button" className="management-btn" onClick={() => imprimirHistorialVentas(false)}>▤ Imprimir periodo/filtros</button>
               </div>
@@ -2704,7 +2771,9 @@ const confirmarCambioEstadoEmpleado = async () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {ventasPaginaActual.map(v => (
+                  {cargandoVentas ? (
+                    <tr><td colSpan="7" className="table-empty">Cargando historial y detalles de ventas…</td></tr>
+                  ) : ventasPaginaActual.map(v => (
                     <tr key={v.folio}>
                       <td><strong>#TK-{v.folio}</strong></td>
                       <td>{new Date(v.fecha_hora).toLocaleString('es-MX')}</td>
@@ -2729,7 +2798,7 @@ const confirmarCambioEstadoEmpleado = async () => {
                       </td>
                     </tr>
                   ))}
-                  {ventasFiltradas.length === 0 && (
+                  {!cargandoVentas && ventasFiltradas.length === 0 && (
                     <tr>
                       <td colSpan="7" className="table-empty">
                         {ventasGerencia.length === 0 ? 'Todavía no hay ventas registradas.' : 'No hay ventas que coincidan con los filtros seleccionados.'}
@@ -3451,8 +3520,13 @@ const confirmarCambioEstadoEmpleado = async () => {
               >
                 Regresar
               </button>
-              <button type="button" className="modal-primary" onClick={async () => { await procesarVenta(); }}>
-                Confirmar venta
+              <button
+                type="button"
+                className="modal-primary"
+                disabled={guardandoVenta}
+                onClick={procesarVenta}
+              >
+                {guardandoVenta ? 'Registrando venta…' : 'Confirmar venta'}
               </button>
             </div>
           </div>

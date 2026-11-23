@@ -4671,3 +4671,493 @@ canvas {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+/* ==========================================================
+   RESPONSIVE FINAL · CAFETERÍA ORIGEN
+   Reglas de cierre para pantallas grandes, portátiles,
+   tabletas y teléfonos (incluidos anchos de 320 px).
+========================================================== */
+
+:root { color-scheme: light; }
+html { min-width: 320px; }
+body { min-width: 320px; }
+#root { min-width: 0; }
+.app-container { width: min(96%, 1480px); }
+
+/* Layout fluido en monitores y portátiles */
+.topbar { min-width: 0; }
+.brand { flex: 0 1 auto; }
+.search { min-width: 180px; }
+.pos-body { min-width: 0; }
+.main { min-width: 0; }
+.products-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 165px), 1fr)); }
+.receipt-wrap { min-width: 0; }
+.receipt-items { min-width: 0; }
+
+/* Tablet horizontal / laptop compacto: categorías arriba y ticket debajo. */
+@media (max-width: 1100px) {
+  .app-container { width: 98%; }
+  .pos-body { display: flex; flex-direction: column; min-height: 0; }
+  .sidebar {
+    width: 100%;
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .side-label { padding: 0 4px 8px; }
+  .category-list {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 2px 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+  .cat-btn {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 118px;
+    justify-content: center;
+    white-space: nowrap;
+  }
+  .cat-btn.active::before { left: 10px; right: 10px; top: auto; bottom: -2px; width: auto; height: 3px; }
+  .main { width: 100%; padding: 24px; overflow: visible; }
+  .receipt-wrap {
+    width: 100%;
+    padding: 18px 24px 28px;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .receipt { min-height: 0; height: auto; }
+  .receipt-items { max-height: 360px; overflow-y: auto; }
+}
+
+/* Tablet vertical */
+@media (max-width: 768px) {
+  .app-container { width: 100%; margin: 0; border-radius: 0; }
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    padding: 12px 14px;
+  }
+  .brand { min-width: 0; }
+  .search { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; }
+  .top-right {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .top-right .user-badge { flex: 1 1 180px; width: auto; }
+  .top-right .view-nav-btn,
+  .top-right .logout-btn { flex: 0 1 auto; }
+  .pos-body { min-height: 0; }
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page { padding: 20px 16px; }
+  .header-row,
+  .inventory-header,
+  .management-page-header,
+  .sales-header { flex-wrap: wrap; align-items: flex-start; }
+  .products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .product-card { min-height: 160px; }
+  .receipt-wrap { padding: 16px; }
+  .receipt { padding: 22px 16px; }
+  .management-page { min-height: 0; }
+  .inventory-view { min-height: 0; }
+  .inventory-controls { align-items: stretch; }
+  .inventory-filter-group { flex: 1 1 190px; min-width: 0; }
+  .accounting-summary-grid,
+  .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Teléfonos */
+@media (max-width: 540px) {
+  .topbar { padding: 10px; }
+  .brand-mark { width: 38px; height: 38px; border-radius: 12px; }
+  .brand-mark svg { width: 22px; height: 22px; }
+  .brand-name { font-size: 17px; }
+  .brand-sub { font-size: 10px; }
+  .top-right { gap: 6px; }
+  .top-right .user-badge { flex: 1 1 100%; justify-content: center; }
+  .top-right .view-nav-btn,
+  .top-right .logout-btn { flex: 1 1 auto; }
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page { padding: 16px 11px; }
+  .title { font-size: clamp(22px, 6vw, 28px); }
+  .subtitle { font-size: 12px; }
+  .header-row { gap: 8px; margin-bottom: 16px; }
+  .products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .product-card { min-height: 145px; padding: 12px 10px; border-radius: 14px; }
+  .product-name { overflow-wrap: anywhere; }
+  .product-price { font-size: 15px; }
+  .receipt-wrap { padding: 12px 10px 22px; }
+  .receipt { padding: 20px 13px 18px; }
+  .receipt-items { max-height: 300px; }
+  .inventory-controls { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 11px; }
+  .inventory-filter-group { width: 100%; min-width: 0; }
+  .employees-toolbar,
+  .sales-header-actions,
+  .suppliers-search-row { display: flex; flex-wrap: wrap; }
+  .employees-toolbar > *,
+  .sales-header-actions > *,
+  .suppliers-search-row > * { flex: 1 1 100%; min-width: 0; }
+  .sales-filters-panel { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .sales-search-field { grid-column: auto; }
+  .accounting-summary-grid,
+  .kpi-grid { grid-template-columns: minmax(0, 1fr); }
+  .accounting-date-fields { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .accounting-date-fields > *,
+  .accounting-date-toolbar > * { width: 100%; min-width: 0; }
+  .modal-overlay,
+  .ticket-modal-overlay,
+  .purchase-ticket-overlay { align-items: flex-end; padding: 8px; }
+  .payment-modal,
+  .confirm-modal,
+  .ticket-detail-modal,
+  .purchase-ticket-modal,
+  .accounting-form-modal,
+  .accounting-detail-modal,
+  .supplier-form-modal,
+  .purchase-registration-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 16px 13px;
+    border-radius: 18px 18px 12px 12px;
+  }
+  .modal-header { gap: 8px; margin-bottom: 14px; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button { width: 100%; min-height: 44px; }
+  .phone-input-wrap,
+  .employee-phone-input { min-width: 0; }
+  .pagination-controls { justify-content: center; }
+  .pagination-controls span { flex: 1 1 100%; order: -1; text-align: center; }
+}
+
+/* Pantallas estrechas */
+@media (max-width: 380px) {
+  .brand { gap: 8px; }
+  .brand-name { font-size: 15px; }
+  .brand-sub { font-size: 9px; }
+  .top-right .view-nav-btn,
+  .top-right .logout-btn { font-size: 11px; padding: 0 8px; }
+  .products-grid { grid-template-columns: minmax(0, 1fr); }
+  .product-card { min-height: 120px; }
+  .main,
+  .inventory-view,
+  .management-page,
+  .suppliers-page { padding-right: 8px; padding-left: 8px; }
+}
+
+/* Accesibilidad: evita animaciones excesivas en equipos/dispositivos configurados así. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Evitar que un modal o tabla provoque scroll horizontal global. */
+@supports (overflow: clip) {
+  html, body { overflow-x: clip; }
+}
+
+
+/* ==========================================================
+   AJUSTE ESPECÍFICO PARA LAPTOPS (1280–1440 px)
+   Mantiene las tres zonas del POS, pero reduce sus anchos y
+   permite que el contenido se desplace dentro de cada panel.
+========================================================== */
+@media screen and (min-width: 1101px) and (max-width: 1440px) {
+  .app-container {
+    width: calc(100% - 28px);
+    max-width: 1400px;
+    min-height: 0;
+    margin: 14px auto;
+  }
+
+  .topbar {
+    gap: 10px 14px;
+    padding: 12px 18px;
+    flex-wrap: wrap;
+  }
+
+  .brand { min-width: 190px; gap: 9px; }
+  .brand-name { font-size: 19px; }
+  .search { flex: 1 1 210px; width: auto; min-width: 170px; max-width: 360px; }
+  .top-right { flex: 0 1 auto; gap: 7px; flex-wrap: wrap; }
+  .top-right button, .top-right a, .view-nav-btn { white-space: normal; }
+
+  .pos-body { min-height: 0; }
+  .sidebar {
+    width: 185px;
+    flex: 0 0 185px;
+    padding: 16px 10px;
+  }
+  .main { padding: 18px 16px; }
+  .products-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+    gap: 12px;
+  }
+  .receipt-wrap {
+    width: 300px;
+    flex: 0 0 300px;
+    padding: 16px 14px 20px;
+  }
+  .receipt { min-height: 0; padding: 20px 14px 18px; }
+  .receipt-items { min-height: 0; max-height: min(38vh, 320px); overflow-y: auto; }
+
+  .management-page, .inventory-view, .suppliers-page { min-width: 0; }
+  .management-page-header, .inventory-header, .sales-header { gap: 12px; }
+  .inventory-controls, .sales-filters-panel { min-width: 0; }
+  .modal-overlay, .ticket-modal-overlay, .purchase-ticket-overlay { padding: 16px; }
+}
+
+/* Laptops de poca altura (por ejemplo, 1366×768). */
+@media screen and (min-width: 769px) and (max-height: 820px) {
+  .app-container { margin-top: 10px; margin-bottom: 10px; }
+  .pos-body { min-height: 0; }
+  .main { overflow-y: auto; }
+  .sidebar { overflow-y: auto; }
+  .receipt-wrap { overflow-y: auto; }
+  .receipt { min-height: 0; }
+}
+
+
+/* ==========================================================
+   RESPONSIVIDAD REAL PARA LAPTOPS Y ESCRITORIOS
+   El contenedor ya no queda limitado a un ancho fijo.
+========================================================== */
+@media screen and (min-width: 1101px) and (max-width: 1920px) {
+  .app-container {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    margin: 0;
+    border-radius: 0;
+  }
+  .pos-body { min-width: 0; }
+  .sidebar {
+    width: clamp(155px, 13vw, 205px);
+    flex: 0 0 clamp(155px, 13vw, 205px);
+    min-width: 0;
+  }
+  .main {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    padding: clamp(16px, 1.6vw, 26px);
+  }
+  .receipt-wrap {
+    width: clamp(285px, 23vw, 350px);
+    flex: 0 0 clamp(285px, 23vw, 350px);
+    min-width: 0;
+    padding: 16px clamp(12px, 1.1vw, 20px);
+  }
+  .receipt { min-width: 0; }
+  .products-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(10px, .9vw, 15px);
+  }
+  .product-card { min-width: 0; }
+}
+
+/* Laptop compacta: el ticket pasa debajo para evitar columnas comprimidas. */
+@media screen and (min-width: 769px) and (max-width: 1350px) {
+  .pos-body {
+    display: grid;
+    grid-template-columns: 165px minmax(0, 1fr);
+    min-height: 0;
+    height: auto;
+    overflow: visible;
+  }
+  .sidebar {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 165px;
+    min-width: 0;
+    padding: 16px 9px;
+  }
+  .main {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    min-width: 0;
+    overflow: visible;
+    padding: 20px;
+  }
+  .products-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .receipt-wrap {
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    border-left: 0;
+    border-top: 1px solid var(--line-soft);
+    padding: 18px 20px;
+  }
+  .receipt {
+    width: 100%;
+    max-width: 760px;
+    min-height: 0;
+    margin: 0 auto;
+  }
+  .receipt-items { max-height: 280px; overflow-y: auto; }
+}
+
+/* Ventanas medianas: dos columnas de productos y paneles sin desbordamiento. */
+@media screen and (min-width: 769px) and (max-width: 1100px) {
+  .products-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .main { padding: 16px; }
+  .header-row { flex-wrap: wrap; align-items: flex-start; }
+}
+
+/* Evita que los elementos internos fuercen un ancho mayor al disponible. */
+@media screen and (min-width: 769px) {
+  .app-container, .pos-body, .sidebar, .main, .receipt-wrap,
+  .management-page, .inventory-view, .suppliers-page {
+    box-sizing: border-box;
+    min-width: 0;
+  }
+  img, table { max-width: 100%; }
+  table { display: block; overflow-x: auto; }
+}
+
+
+/* ==========================================================
+   CORRECCIÓN GLOBAL DE TABLAS · ESCRITORIO, LAPTOP, TABLET Y MÓVIL
+   En escritorio las tablas ocupan todo el panel. En pantallas
+   estrechas conservan un ancho legible y se desplazan dentro
+   de su contenedor, nunca dentro de toda la página.
+========================================================== */
+
+.inventory-table-wrapper,
+.sales-table-wrapper,
+.suppliers-table-wrap,
+.purchase-ticket-table-wrap,
+.ticket-modal-table-wrap,
+.table-responsive,
+.accounting-admin-card,
+.purchases-history-card {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: auto !important;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+/* Restablecer el modelo de tabla: display:block/max-content
+   hacía que algunas tablas quedaran pegadas a la izquierda. */
+.inventory-table,
+.suppliers-table,
+.purchase-ticket-table,
+.sales-table-wrapper table,
+.ticket-modal-table-wrap table,
+.table-responsive table {
+  display: table !important;
+  box-sizing: border-box;
+  border-collapse: collapse;
+  table-layout: auto;
+  max-width: none !important;
+}
+
+/* Escritorio y laptops amplias: llenar el ancho del panel. */
+@media screen and (min-width: 1101px) {
+  .inventory-table-wrapper,
+  .sales-table-wrapper,
+  .suppliers-table-wrap,
+  .purchase-ticket-table-wrap,
+  .ticket-modal-table-wrap,
+  .table-responsive,
+  .accounting-admin-card,
+  .purchases-history-card {
+    width: 100% !important;
+  }
+
+  .inventory-table,
+  .suppliers-table,
+  .purchase-ticket-table,
+  .sales-table-wrapper table,
+  .ticket-modal-table-wrap table,
+  .table-responsive table {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  .inventory-table th,
+  .inventory-table td,
+  .suppliers-table th,
+  .suppliers-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .inventory-table th:last-child,
+  .inventory-table td:last-child,
+  .suppliers-table th:last-child,
+  .suppliers-table td:last-child {
+    min-width: 150px;
+  }
+}
+
+/* Laptop compacta, tablet y móvil: scroll horizontal dentro
+   de la tabla para no aplastar columnas ni deformar la página. */
+@media screen and (max-width: 1100px) {
+  .inventory-table,
+  .sales-table-wrapper table,
+  .ticket-modal-table-wrap table,
+  .table-responsive table {
+    width: max-content !important;
+    min-width: 760px !important;
+    max-width: none !important;
+  }
+
+  .suppliers-table {
+    width: max-content !important;
+    min-width: 980px !important;
+    max-width: none !important;
+  }
+
+  .inventory-table th,
+  .inventory-table td,
+  .suppliers-table th,
+  .suppliers-table td {
+    white-space: nowrap;
+  }
+}
+
+/* Teléfonos: controles y tablas no deben ensanchar el viewport. */
+@media screen and (max-width: 600px) {
+  .inventory-table-wrapper,
+  .sales-table-wrapper,
+  .suppliers-table-wrap,
+  .purchase-ticket-table-wrap,
+  .ticket-modal-table-wrap,
+  .table-responsive,
+  .accounting-admin-card,
+  .purchases-history-card {
+    max-width: calc(100vw - 16px);
+    overflow-x: auto !important;
+  }
+
+  .inventory-table { min-width: 720px !important; }
+  .suppliers-table { min-width: 900px !important; }
+}
