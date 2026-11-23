@@ -5161,3 +5161,89 @@ body { min-width: 320px; }
   .inventory-table { min-width: 720px !important; }
   .suppliers-table { min-width: 900px !important; }
 }
+
+/* ==========================================================
+   REPORTES RESPONSIVOS · escritorio, tablet y teléfono
+========================================================== */
+.reports-filter-panel { width:100%; min-width:0; align-items:flex-end !important; }
+.reports-filter-panel > div { min-width:0 !important; }
+.reports-filter-panel input, .reports-filter-panel button { max-width:100%; }
+.reports-kpi-grid {
+  width:100%; min-width:0;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+}
+.reports-kpi-grid > div { min-width:0; overflow-wrap:anywhere; }
+.reports-kpi-grid > div > div:nth-child(2) {
+  font-size:clamp(18px,2vw,26px) !important;
+  overflow-wrap:anywhere; word-break:break-word;
+}
+.reports-details-grid {
+  width:100%; min-width:0;
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+}
+.reports-panel {
+  min-width:0; max-width:100%; overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+.reports-panel h3 { overflow-wrap:anywhere; }
+.reports-panel .reports-data-table {
+  display:table !important; width:100% !important;
+  min-width:560px; max-width:none !important;
+  table-layout:auto;
+}
+.reports-panel > div { min-width:0; }
+.reports-panel > div > div > span,
+.reports-panel > div > div > strong { min-width:0; overflow-wrap:anywhere; }
+.report-actions { min-width:0; }
+.report-actions button { white-space:normal; }
+
+@media (max-width:900px) {
+  .reports-kpi-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  .reports-details-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .reports-filter-panel {
+    display:grid !important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    align-items:end !important;
+  }
+  .reports-filter-panel > div { width:100%; }
+  .reports-filter-panel > button { width:100%; min-height:42px; }
+  .reports-filter-panel > div:last-child { grid-column:1 / -1; }
+}
+@media (max-width:600px) {
+  .reports-filter-panel {
+    grid-template-columns:minmax(0,1fr) !important;
+    padding:12px !important; gap:10px !important; margin:12px 0 !important;
+  }
+  .reports-filter-panel > div,
+  .reports-filter-panel > div:last-child { grid-column:1; width:100%; }
+  .reports-filter-panel input { min-height:42px; font-size:16px; }
+  .reports-filter-panel button { width:100%; min-height:42px; }
+  .reports-kpi-grid {
+    grid-template-columns:minmax(0,1fr) !important;
+    gap:10px !important; margin:14px 0 !important;
+  }
+  .reports-kpi-grid > div { padding:14px !important; }
+  .reports-kpi-grid > div > div:first-child { font-size:11px !important; letter-spacing:.03em; }
+  .reports-kpi-grid > div > div:nth-child(2) { font-size:23px !important; line-height:1.2; }
+  .reports-details-grid {
+    grid-template-columns:minmax(0,1fr) !important;
+    gap:12px !important; margin-top:12px !important;
+  }
+  .reports-panel { padding:12px !important; border-radius:10px !important; }
+  .reports-panel h3 { font-size:14px !important; line-height:1.35; }
+  .reports-panel .reports-data-table { min-width:540px; font-size:11px; }
+  .reports-panel .reports-data-table th,
+  .reports-panel .reports-data-table td { padding:9px 8px !important; white-space:nowrap; }
+  .inventory-view .inventory-header { align-items:flex-start; flex-direction:column; }
+  .inventory-view .inventory-header .report-actions {
+    width:100%; display:grid !important;
+    grid-template-columns:minmax(0,1fr) !important;
+  }
+  .inventory-view .inventory-header .report-actions button { width:100%; min-height:42px; }
+  .inventory-view .title { font-size:clamp(22px,7vw,29px); }
+  .inventory-view .subtitle { font-size:12px; }
+}
+@media (min-width:601px) and (max-width:900px) {
+  .reports-panel { padding:14px !important; }
+  .reports-panel .reports-data-table { min-width:540px; }
+}

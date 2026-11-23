@@ -3183,7 +3183,7 @@ const confirmarCambioEstadoEmpleado = async () => {
       </div>
     </div>
 
-    <section className="no-print" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px 18px', margin: '18px 0', display: 'flex', gap: '14px', alignItems: 'end', flexWrap: 'wrap' }}>
+    <section className="no-print reports-filter-panel" style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px', padding: '16px 18px', margin: '18px 0', display: 'flex', gap: '14px', alignItems: 'end', flexWrap: 'wrap' }}>
       <div style={{ minWidth: '180px', flex: '1' }}>
         <label htmlFor="reporte-fecha-inicio" style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Desde</label>
         <input id="reporte-fecha-inicio" type="date" value={fechaInicioReportes} max={fechaHoyReportes} onChange={e => setFechaInicioReportes(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #d1d5db', borderRadius: '7px' }} />
@@ -3207,7 +3207,7 @@ const confirmarCambioEstadoEmpleado = async () => {
     {reportesData ? (
       <>
         {/* TARJETAS DE INDICADORES CLAVE (KPIs) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', margin: '20px 0' }}>
+        <div className="reports-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px', margin: '20px 0' }}>
           <div style={{ background: '#fff', padding: '18px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
             <div style={{ fontSize: '13px', color: '#6b7280', fontWeight: 'bold' }}>INGRESOS TOTALES</div>
             <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#111827', marginTop: '6px' }}>
@@ -3244,14 +3244,14 @@ const confirmarCambioEstadoEmpleado = async () => {
         </div>
 
         {/* SECCIÓN DOS COLUMNAS: TOP PRODUCTOS Y VENTAS POR CATEGORÍA */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
+        <div className="reports-details-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginTop: '20px' }}>
           
           {/* TABLA DE TOP 5 PRODUCTOS MÁS VENDIDOS */}
-          <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <div className="reports-panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
               ⭐ Top 5 Productos Más Vendidos
             </h3>
-            <table className="inventory-table" style={{ width: '100%' }}>
+            <table className="inventory-table reports-data-table" style={{ width: '100%' }}>
               <thead>
                 <tr>
                   <th>PRODUCTO</th>
@@ -3277,7 +3277,7 @@ const confirmarCambioEstadoEmpleado = async () => {
           </div>
 
           {/* DISTRIBUCIÓN POR CATEGORÍAS */}
-          <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <div className="reports-panel" style={{ background: '#fff', padding: '20px', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
             <h3 style={{ margin: '0 0 15px 0', fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
               📊 Ventas por Categoría
             </h3>
