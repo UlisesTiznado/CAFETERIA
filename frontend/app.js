@@ -259,13 +259,18 @@ const [reportesData, setReportesData] = useState(null);
     let activo = true;
     const validarSesionRemota = async () => {
       try {
-        const response = await fetch(`/api/sesion/${usuario.id_usuario}`, { cache: 'no-store' });
+        const response = await fetch(`/api/sesion/${usuario.id_usuario}?_=${Date.now()}`, {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
         const data = await response.json().catch(() => ({}));
         const versionLocal = String(usuario.session_version ?? '');
         const versionRemota = String(data.session_version ?? '');
-        const rolCambio = Number(data.id_rol) !== Number(usuario.id_rol);
+        const rolCambio = Number(data.id_rol) !== Number(usuario.id_rol) ||
+          (data.rol && usuario.rol && String(data.rol).toLowerCase() !== String(usuario.rol).toLowerCase());
         const sesionInvalida = !response.ok || data.valid !== true || !versionLocal ||
-          versionLocal !== versionRemota || rolCambio;
+          !versionRemota || versionLocal !== versionRemota || rolCambio;
         if (!activo || !sesionInvalida || cierreSesionPorCambioRef.current) return;
         cierreSesionPorCambioRef.current = true;
         localStorage.removeItem('usuario');
@@ -282,7 +287,8 @@ const [reportesData, setReportesData] = useState(null);
       }
     };
     validarSesionRemota();
-    const intervalo = setInterval(validarSesionRemota, 10000);
+    // Comprobación frecuente para expulsar rápidamente sesiones abiertas en otros equipos.
+    const intervalo = setInterval(validarSesionRemota, 3000);
     const alVolver = () => {
       if (document.visibilityState === 'visible') validarSesionRemota();
     };
@@ -940,6 +946,7 @@ setVentasGerencia([]);
 setTicketSeleccionado(null);
 
 // Guardar el usuario autenticado
+cierreSesionPorCambioRef.current = false;
 setUsuario(data.user);
 localStorage.setItem('usuario', JSON.stringify(data.user));
     } catch (err) {

@@ -110,6 +110,13 @@ app.post('/api/login', async (req, res) => {
 
 // Consultar si una sesión sigue vigente y si el rol continúa siendo el mismo.
 app.get('/api/sesion/:idUsuario', async (req, res) => {
+    // Esta respuesta nunca debe almacenarse en caché (navegador, proxy o CDN).
+    res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store'
+    });
     const idUsuario = Number(req.params.idUsuario);
     if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
         return res.status(400).json({ valid: false, error: 'Usuario no válido.' });
