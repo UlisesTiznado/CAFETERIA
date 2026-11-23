@@ -251,6 +251,51 @@ const [reportesData, setReportesData] = useState(null);
 }, [usuario, esAdministrador, vistaActual]);
 
 
+  // Revalida la sesión periódicamente y al volver a la pestaña.
+  // Si el rol, la contraseña o el estado cambiaron, expulsa esta sesión en todos los dispositivos.
+  const cierreSesionPorCambioRef = useRef(false);
+  useEffect(() => {
+    if (!usuario?.id_usuario) return;
+    let activo = true;
+    const validarSesionRemota = async () => {
+      try {
+        const response = await fetch(`/api/sesion/${usuario.id_usuario}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        const versionLocal = String(usuario.session_version ?? '');
+        const versionRemota = String(data.session_version ?? '');
+        const rolCambio = Number(data.id_rol) !== Number(usuario.id_rol);
+        const sesionInvalida = !response.ok || data.valid !== true || !versionLocal ||
+          versionLocal !== versionRemota || rolCambio;
+        if (!activo || !sesionInvalida || cierreSesionPorCambioRef.current) return;
+        cierreSesionPorCambioRef.current = true;
+        localStorage.removeItem('usuario');
+        setUsuario(null);
+        setVistaActual('pos');
+        setMenuGerenciaAbierto(false);
+        setCarrito([]);
+        setVentasGerencia([]);
+        setTicketSeleccionado(null);
+        alert('Tu sesión se cerró porque un administrador modificó tu rol, contraseña o estado. Inicia sesión nuevamente.');
+      } catch (error) {
+        // Si la red falla temporalmente no se cierra la sesión; se volverá a comprobar.
+        console.warn('No se pudo validar la sesión en este momento:', error);
+      }
+    };
+    validarSesionRemota();
+    const intervalo = setInterval(validarSesionRemota, 10000);
+    const alVolver = () => {
+      if (document.visibilityState === 'visible') validarSesionRemota();
+    };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', validarSesionRemota);
+    return () => {
+      activo = false;
+      clearInterval(intervalo);
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('focus', validarSesionRemota);
+    };
+  }, [usuario?.id_usuario, usuario?.id_rol, usuario?.session_version]);
+
   /* ==================================================
      CARGAR MENÚ E INVENTARIO
   ================================================== */

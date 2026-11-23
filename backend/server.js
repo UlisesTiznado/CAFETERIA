@@ -5,7 +5,27 @@ const pool = require('./db');
 
 const app = express();
 app.use(cors());
+
 app.use(express.json());
+
+// Tabla de versiones para invalidar sesiones en todos los dispositivos.
+// Se crea de forma idempotente y la promesa se reutiliza durante la vida del proceso.
+let preparacionTablaVersionSesion = null;
+async function asegurarTablaVersionSesion(db = pool) {
+    if (!preparacionTablaVersionSesion) {
+        preparacionTablaVersionSesion = db.query(`
+            CREATE TABLE IF NOT EXISTS public.usuario_sesion_version (
+                id_usuario INTEGER PRIMARY KEY REFERENCES public.usuarios(id_usuario) ON DELETE CASCADE,
+                version BIGINT NOT NULL DEFAULT 1,
+                actualizado_en TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        `).catch(error => {
+            preparacionTablaVersionSesion = null;
+            throw error;
+        });
+    }
+    return preparacionTablaVersionSesion;
+}
 
 // Servir la carpeta frontend completa como archivos estáticos
 app.use(express.static(path.join(__dirname, '../frontend')));
@@ -36,6 +56,7 @@ app.post('/api/login', async (req, res) => {
       WHERE u.username = $1 AND u.password = $2
     `;
 
+    await asegurarTablaVersionSesion();
     const result = await pool.query(query, [username, password]);
 
     // 1. Validar si el usuario y contraseña existen
@@ -56,7 +77,15 @@ app.post('/api/login', async (req, res) => {
       });
     }
 
-    // 3. Login exitoso
+    // 3. Obtener la versión actual de sesión. Cada inicio de sesión recibe
+    // la versión vigente; cualquier cambio posterior la incrementa.
+    const versionRes = await pool.query(`
+      INSERT INTO public.usuario_sesion_version (id_usuario, version)
+      VALUES ($1, 1)
+      ON CONFLICT (id_usuario) DO UPDATE SET id_usuario = EXCLUDED.id_usuario
+      RETURNING version
+    `, [usuario.id_usuario]);
+
     return res.json({
       success: true,
       user: {
@@ -65,7 +94,8 @@ app.post('/api/login', async (req, res) => {
         id_empleado: usuario.id_empleado,
         nombre: usuario.nombre_empleado,
         id_rol: usuario.id_rol,
-        rol: usuario.rol
+        rol: usuario.rol,
+        session_version: String(versionRes.rows[0].version)
       }
     });
 
@@ -76,6 +106,38 @@ app.post('/api/login', async (req, res) => {
       message: 'Error interno del servidor al verificar credenciales'
     });
   }
+});
+
+// Consultar si una sesión sigue vigente y si el rol continúa siendo el mismo.
+app.get('/api/sesion/:idUsuario', async (req, res) => {
+    const idUsuario = Number(req.params.idUsuario);
+    if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+        return res.status(400).json({ valid: false, error: 'Usuario no válido.' });
+    }
+    try {
+        await asegurarTablaVersionSesion();
+        const result = await pool.query(`
+            SELECT u.id_usuario, e.id_rol, e.estado, r.nombre AS rol,
+                   COALESCE(v.version, 1) AS session_version
+            FROM public.usuarios u
+            JOIN public.empleado e ON e.id_empleado = u.id_empleado
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+            LEFT JOIN public.usuario_sesion_version v ON v.id_usuario = u.id_usuario
+            WHERE u.id_usuario = $1
+        `, [idUsuario]);
+        if (!result.rowCount || String(result.rows[0].estado || '').toLowerCase() !== 'activo') {
+            return res.status(401).json({ valid: false });
+        }
+        return res.json({
+            valid: true,
+            id_rol: result.rows[0].id_rol,
+            rol: result.rows[0].rol,
+            session_version: String(result.rows[0].session_version)
+        });
+    } catch (error) {
+        console.error('Error al validar sesión:', error);
+        return res.status(500).json({ valid: false, error: 'No se pudo validar la sesión.' });
+    }
 });
 
 // ==========================================
@@ -1468,38 +1530,76 @@ app.put('/api/empleados/:id', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        const actual = await client.query(
-            'SELECT id_empleado FROM public.empleado WHERE id_empleado = $1 FOR UPDATE',
-            [idEmpleado]
-        );
+        await asegurarTablaVersionSesion();
+        await client.query('SELECT pg_advisory_xact_lock(72190419)');
+        const actual = await client.query(`
+            SELECT e.id_empleado, e.id_rol, e.estado, r.nombre AS rol
+            FROM public.empleado e
+            LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+            WHERE e.id_empleado = $1 FOR UPDATE OF e
+        `, [idEmpleado]);
         if (!actual.rowCount) {
             await client.query('ROLLBACK');
             return res.status(404).json({ error: 'Empleado no encontrado.' });
+        }
+        const rolAnterior = Number(actual.rows[0].id_rol) === 2
+            || String(actual.rows[0].rol || '').trim().toLowerCase() === 'administrador';
+        const rolNuevoRes = await client.query('SELECT id_rol, nombre FROM public.rol WHERE id_rol = $1', [idRol]);
+        if (!rolNuevoRes.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'El rol seleccionado no existe.' });
+        }
+        const rolNuevo = Number(rolNuevoRes.rows[0].id_rol) === 2
+            || String(rolNuevoRes.rows[0].nombre || '').trim().toLowerCase() === 'administrador';
+        const activo = String(actual.rows[0].estado || '').toLowerCase() === 'activo';
+
+        if (rolAnterior && !rolNuevo && activo) {
+            const conteo = await client.query(`
+                SELECT COUNT(*)::int AS total
+                FROM public.empleado e
+                LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+                WHERE LOWER(COALESCE(e.estado, 'activo')) = 'activo'
+                  AND (e.id_rol = 2 OR LOWER(COALESCE(r.nombre, '')) = 'administrador')
+            `);
+            const total = Number(conteo.rows[0].total || 0);
+            if (total <= 2) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ error: `No puedes cambiar el rol de este administrador. Deben permanecer al menos 2 administradores activos y actualmente hay ${total}.` });
+            }
+        }
+
+        const usuariosAfectados = await client.query(
+            'SELECT id_usuario FROM public.usuarios WHERE id_empleado = $1 FOR UPDATE',
+            [idEmpleado]
+        );
+        if (nuevaPassword && !usuariosAfectados.rowCount) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Este empleado todavía no tiene una cuenta de acceso. Primero crea su usuario.' });
         }
 
         await client.query(
             'UPDATE public.empleado SET nombre = $1, telefono = $2, id_rol = $3 WHERE id_empleado = $4',
             [nombre, telefono, idRol, idEmpleado]
         );
-
         if (nuevaPassword) {
-            const usuario = await client.query(
-                'SELECT id_usuario FROM public.usuarios WHERE id_empleado = $1 FOR UPDATE',
-                [idEmpleado]
-            );
-            if (!usuario.rowCount) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ error: 'Este empleado todavía no tiene una cuenta de acceso. Primero crea su usuario.' });
-            }
-            // Se conserva el formato de contraseña que utiliza actualmente el inicio de sesión del proyecto.
-            await client.query(
-                'UPDATE public.usuarios SET password = $1 WHERE id_empleado = $2',
-                [nuevaPassword, idEmpleado]
-            );
+            await client.query('UPDATE public.usuarios SET password = $1 WHERE id_empleado = $2', [nuevaPassword, idEmpleado]);
+        }
+        // Cualquier cambio de rol o contraseña invalida todas las sesiones del usuario.
+        if (usuariosAfectados.rowCount && (Number(actual.rows[0].id_rol) !== idRol || Boolean(nuevaPassword))) {
+            await client.query(`
+                INSERT INTO public.usuario_sesion_version (id_usuario, version)
+                SELECT id_usuario, 2 FROM public.usuarios WHERE id_empleado = $1
+                ON CONFLICT (id_usuario) DO UPDATE
+                SET version = public.usuario_sesion_version.version + 1, actualizado_en = NOW()
+            `, [idEmpleado]);
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, message: 'Empleado actualizado correctamente.' });
+        res.json({
+            success: true,
+            message: 'Empleado actualizado correctamente.',
+            sesionInvalidada: Boolean(usuariosAfectados.rowCount && (Number(actual.rows[0].id_rol) !== idRol || Boolean(nuevaPassword)))
+        });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('Error al actualizar empleado:', err);
@@ -1530,7 +1630,7 @@ app.delete('/api/empleados/:id', async (req, res) => {
 
         // Serializa las eliminaciones de administradores para evitar que dos
         // solicitudes simultáneas dejen al sistema con menos de dos.
-        await client.query('SELECT pg_advisory_xact_lock(72190418)');
+        await client.query('SELECT pg_advisory_xact_lock(72190419)');
 
         const solicitante = await client.query(`
             SELECT e.id_empleado
@@ -1655,6 +1755,7 @@ app.patch('/api/empleados/:id/estado', async (req, res) => {
     await client.query('BEGIN');
     // Bloquea primero las filas de administradores en un orden fijo.
     // Así las operaciones simultáneas no pueden desactivar dos administradores a la vez.
+    await client.query('SELECT pg_advisory_xact_lock(72190419)');
     await client.query(`SELECT id_empleado FROM public.empleado WHERE id_rol = 2 ORDER BY id_empleado FOR UPDATE`);
 
     const solicitanteRes = await client.query(
@@ -1679,7 +1780,9 @@ app.patch('/api/empleados/:id/estado', async (req, res) => {
     }
 
     const objetivoRes = await client.query(
-      `SELECT id_empleado, nombre, estado, id_rol FROM public.empleado WHERE id_empleado = $1 FOR UPDATE`,
+      `SELECT e.id_empleado, e.nombre, e.estado, e.id_rol, r.nombre AS rol
+       FROM public.empleado e LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+       WHERE e.id_empleado = $1 FOR UPDATE OF e`,
       [id_empleado]
     );
     if (!objetivoRes.rowCount) {
@@ -1689,14 +1792,17 @@ app.patch('/api/empleados/:id/estado', async (req, res) => {
     const objetivo = objetivoRes.rows[0];
 
     if (estado === 'Inactivo') {
-      if (Number(objetivo.id_rol) === 2 && Number(objetivo.id_empleado) === Number(solicitante.id_empleado)) {
+      if ((Number(objetivo.id_rol) === 2 || String(objetivo.rol || '').toLowerCase() === 'administrador') && Number(objetivo.id_empleado) === Number(solicitante.id_empleado)) {
         await client.query('ROLLBACK');
         return res.status(403).json({ error: 'No puedes desactivar tu propio acceso de administrador.' });
       }
-      if (Number(objetivo.id_rol) === 2 && String(objetivo.estado || '').toLowerCase() === 'activo') {
+      if ((Number(objetivo.id_rol) === 2 || String(objetivo.rol || '').toLowerCase() === 'administrador') && String(objetivo.estado || '').toLowerCase() === 'activo') {
         const countRes = await client.query(
-          `SELECT COUNT(*)::int AS total FROM public.empleado
-           WHERE id_rol = 2 AND LOWER(COALESCE(estado, 'activo')) = 'activo'`
+          `SELECT COUNT(*)::int AS total
+           FROM public.empleado e
+           LEFT JOIN public.rol r ON r.id_rol = e.id_rol
+           WHERE LOWER(COALESCE(e.estado, 'activo')) = 'activo'
+             AND (e.id_rol = 2 OR LOWER(COALESCE(r.nombre, '')) = 'administrador')`
         );
         const total = Number(countRes.rows[0].total || 0);
         if (total <= 2) {
@@ -1855,6 +1961,7 @@ app.listen(PORT, async () => {
             ADD COLUMN IF NOT EXISTS id_usuario INTEGER
             REFERENCES public.usuarios(id_usuario);
         `);
+        await asegurarTablaVersionSesion();
         await prepararProveedores();
         await limpiarProveedoresInactivosVencidos();
     } catch (err) {
